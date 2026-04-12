@@ -1,4 +1,4 @@
-# 🚀 ConnectWikiMCP v1.0.1 (Kernel Edition)
+# 🚀 ConnectWikiMCP v1.1.0 (Karpathy Edition)
 
 [English](#-english) | [한국어](#-한국어)
 
@@ -9,18 +9,20 @@
 ### Definition
 ConnectWikiMCP is an autonomous knowledge management server that transforms fragmented information into a structured **Knowledge Graph**. Based on Andrej Karpathy's "LLM Wiki" philosophy and built on the **Model Context Protocol (MCP)**, it enables AI agents to independently build, connect, and evolve a second brain.
 
-This **v1.0.1 (Kernel Edition)** is a major stability release, replacing the previous monolithic design with a clean Pydantic-based configuration kernel and a robust Streamable HTTP transport layer.
+This **v1.1.0 (Karpathy Edition)** fully realizes Andrej Karpathy's LLM Wiki vision: a self-improving, semantically searchable second brain that actively ingests knowledge from any source.
 
 ### ✨ Features
-- **Streamable HTTP Transport**: Full support for the latest MCP Streamable HTTP standard (`/mcp` endpoint), replacing the legacy SSE transport. Also supports STDIO for direct local integration.
-- **Pydantic Config Kernel**: All configuration is managed through a type-safe `Config` model, with environment variables always taking precedence over `config.json` (critical for Docker deployments).
-- **Cross-Platform Path Normalization**: Automatically detects and discards Windows-style paths (`D:\...`) when running in a Linux/Docker environment, preventing cross-platform configuration corruption.
-- **Hierarchical Knowledge Structure**: Manages large-scale knowledge using a `Category/Sub-Category/Page` system.
-- **Automatic Document Sync**: Converts source files (PDF, Word, etc.) into AI-optimized Markdown.
-- **Background AI Enrichment**: Automatically adds tags and `[[WikiLinks]]` to new pages using a local LLM without blocking tool execution.
-- **Self-Evolving Intelligence**: Analyzes usage patterns and logs to autonomously update AI behavior guidelines.
-- **Safe Bootstrap & Reset**: Ensures official docs are present in the wiki; the `ResetSystemDocs` tool provides force-sync capability.
-- **Robust I/O Management**: BOM-resilient stdin, stdout stream protection, and graceful shutdown handlers prevent MCP JSON-RPC stream corruption.
+- **Streamable HTTP Transport**: Full MCP Streamable HTTP standard (`/mcp` endpoint). Also supports STDIO for direct local integration.
+- **Semantic Vector Search**: Embedding-based search via Ollama (`nomic-embed-text`), with automatic keyword fallback. Pages are auto-indexed on every save.
+- **URL & YouTube Capture**: `CaptureFromURL` fetches clean article text from any URL, or pulls transcripts from YouTube videos — ready for synthesis into wiki pages.
+- **Page Version History**: Every `SaveWikiContent` call backs up the previous version to `wiki/history/` before overwriting. No edits are ever truly lost.
+- **Auto Evolution Scheduler**: Background asyncio task runs `run_evolution_cycle()` on a configurable interval (default: 6h), analyzing intent logs and appending insights to `System/Intelligence.md` automatically.
+- **Pydantic Config Kernel**: Type-safe `Config` model; environment variables always take precedence over `config.json` (critical for Docker).
+- **Cross-Platform Path Normalization**: Automatically discards Windows-style paths (`D:\...`) in Linux/Docker environments.
+- **Hierarchical Knowledge Structure**: `Category/Sub-Category/Page` system for large-scale knowledge management.
+- **Automatic Document Sync**: Converts PDF, Word, etc. into AI-optimized Markdown via `MarkItDown`.
+- **Background AI Enrichment**: Auto-adds tags and `[[WikiLinks]]` after every page save without blocking.
+- **Safe Bootstrap & Reset**: `ResetSystemDocs` force-syncs official system documentation into the wiki.
 
 ### 📁 Documentation
 - **[System Intelligence Manual](docs/system/Intelligence.md)**: Rules for AI autonomous enrichment and maintenance.
@@ -32,12 +34,14 @@ This **v1.0.1 (Kernel Edition)** is a major stability release, replacing the pre
 |---|---|
 | `ListAllKnowledge` | Returns a full list of all wiki pages |
 | `FetchWikiPage` | Reads a specific page by name |
-| `SaveWikiContent` | Writes or updates a page |
-| `SearchAcrossWiki` | Full-text search across all pages |
+| `SaveWikiContent` | Writes or updates a page (auto-backs up history) |
+| `SearchAcrossWiki` | **Semantic** search (vector similarity → keyword fallback) |
+| `RebuildSearchIndex` | Force-rebuilds the vector embedding index after bulk imports |
 | `ExploreConnections` | Finds all pages linking to a given page |
 | `AnalyzeKnowledgeGraph` | Returns graph data (nodes & edges) |
 | `CaptureQuickNote` | Ingests a raw note for later synthesis |
-| `SyncDocuments` | Converts pending raw files to wiki pages |
+| `CaptureFromURL` | Captures web page or **YouTube transcript** into raw folder |
+| `SyncDocuments` | Converts pending raw files (PDF, Word, etc.) to wiki pages |
 | `SynthesizeKnowledge` | Uses LLM to compile a raw note into a wiki page |
 | `OrganizeByTag` | Lists raw notes by hashtag |
 | `EvolutionAudit` | Returns recent intent logs for pattern analysis |
@@ -58,9 +62,15 @@ Best for stable, isolated production environments.
 
 `.env` key settings:
 ```env
-WIKI_ROOT_PATH=/path/to/your/wiki   # host path to mount as wiki volume
-MCP_TRANSPORT=http                   # 'http' for Streamable HTTP, 'stdio' for local
+WIKI_ROOT_PATH=/path/to/your/wiki        # host path to mount as wiki volume
+MCP_TRANSPORT=http                        # 'http' for Streamable HTTP, 'stdio' for local
 MCP_PORT=15252
+
+# Semantic Search (requires Ollama)
+EMBEDDING_MODEL=nomic-embed-text         # run: ollama pull nomic-embed-text
+
+# Auto-Evolution Scheduler
+EVOLUTION_INTERVAL_HOURS=6               # set to 0 to disable
 ```
 
 #### Method 2. Direct Execution (Local Python)
@@ -99,18 +109,19 @@ For scenarios where you run the server directly without Docker:
 ### 정의
 ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowledge Graph)**로 변환하고 관리하는 자율형 지식 관리 서버입니다.
 
-이번 **v1.0.1 (Kernel Edition)**은 주요 안정화 릴리즈로, 기존의 단일 구조 설계를 Pydantic 기반의 깔끔한 설정 커널과 견고한 Streamable HTTP 전송 계층으로 대체한 버전입니다.
+이번 **v1.1.0 (Karpathy Edition)**은 Andrej Karpathy의 LLM Wiki 비전을 완전히 구현한 버전입니다. 의미론적 검색, URL/YouTube 수집, 페이지 버전 이력, 자동 진화 스케줄러를 갖춘 스스로 성장하는 두 번째 뇌입니다.
 
 ### ✨ 특징
-- **Streamable HTTP 전송 방식**: 최신 MCP Streamable HTTP 표준(`/mcp` 엔드포인트)을 완전 지원합니다. 로컬 직접 연동을 위한 STDIO도 계속 지원합니다.
-- **Pydantic 설정 커널**: 모든 설정이 타입 안전한 `Config` 모델로 관리되며, 도커 환경에서 환경 변수가 `config.json` 파일 설정보다 항상 우선합니다.
-- **크로스 플랫폼 경로 정규화**: 리눅스/도커 환경에서 윈도우 스타일 경로(`D:\...`)를 자동 감지하고 무시하여, 호스트-컨테이너 간 설정 충돌을 원천 차단합니다.
-- **계층형 지식 구조**: `분류/중분류/페이지` 체계를 통해 대규모 지식도 체계적으로 관리합니다.
-- **자동 문서 동기화**: PDF, Word 등 다양한 원본 문서를 AI가 최적화된 Markdown으로 자동 변환합니다.
-- **백그라운드 AI 지능 보강**: 로컬 LLM을 통해 저장되는 모든 페이지에 태그와 `[[WikiLinks]]`를 자동으로 추가합니다. 도구 실행을 블로킹하지 않습니다.
-- **자가 진화 지능**: 사용 패턴과 로그를 분석하여 AI 행동 지침을 스스로 업데이트합니다.
-- **안전 부트스트랩 및 초기화**: 가이드 문서를 위키에 자동 배치하고, `ResetSystemDocs`로 언제든 강제 초기화가 가능합니다.
-- **강력한 I/O 보호**: BOM 처리, Stdout 스트림 보호, 안전한 종료 핸들러를 통해 MCP JSON-RPC 스트림 오염을 방지합니다.
+- **Streamable HTTP 전송 방식**: 최신 MCP Streamable HTTP 표준(`/mcp` 엔드포인트)을 완전 지원합니다. STDIO도 지원합니다.
+- **시맨틱 벡터 검색**: Ollama(`nomic-embed-text`)를 통한 임베딩 기반 검색을 지원합니다. 인덱스가 없을 경우 키워드 검색으로 자동 폴백됩니다. 페이지 저장 시마다 자동 인덱싱됩니다.
+- **URL & YouTube 수집**: `CaptureFromURL`로 웹 페이지 본문 또는 유튜브 자막을 수집하여 raw 폴더에 저장합니다.
+- **페이지 버전 이력**: `SaveWikiContent` 호출 시마다 기존 내용을 `wiki/history/`에 타임스탬프 파일로 자동 백업합니다.
+- **자동 진화 스케줄러**: 백그라운드 asyncio 태스크가 설정 주기(기본 6시간)마다 의도 로그를 분석하고 `System/Intelligence.md`에 인사이트를 자동 추가합니다.
+- **Pydantic 설정 커널**: 환경 변수가 `config.json`보다 항상 우선합니다.
+- **계층형 지식 구조**: `분류/중분류/페이지` 체계로 대규모 지식을 관리합니다.
+- **자동 문서 동기화**: PDF, Word 등을 MarkItDown으로 Markdown 변환합니다.
+- **백그라운드 AI 지능 보강**: 저장되는 모든 페이지에 태그와 `[[WikiLinks]]`를 자동 추가합니다.
+- **안전 부트스트랩 및 초기화**: `ResetSystemDocs`로 공식 시스템 문서를 언제든 강제 동기화할 수 있습니다.
 
 ### 📁 핵심 문서
 - **[System Intelligence Manual](docs/system/Intelligence.md)**: AI 자율 보강 및 유지보수 규칙.
@@ -122,12 +133,14 @@ ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowled
 |---|---|
 | `ListAllKnowledge` | 전체 위키 페이지 목록 반환 |
 | `FetchWikiPage` | 특정 페이지 읽기 |
-| `SaveWikiContent` | 페이지 작성 또는 수정 |
-| `SearchAcrossWiki` | 전체 페이지 전문 검색 |
+| `SaveWikiContent` | 페이지 작성 또는 수정 (이전 버전 자동 백업) |
+| `SearchAcrossWiki` | **시맨틱 검색** (벡터 유사도 → 키워드 자동 폴백) |
+| `RebuildSearchIndex` | 벡터 임베딩 인덱스 전체 재구축 |
 | `ExploreConnections` | 특정 페이지로 연결되는 모든 페이지 탐색 |
 | `AnalyzeKnowledgeGraph` | 그래프 데이터(노드 및 엣지) 반환 |
 | `CaptureQuickNote` | 나중에 합성할 원본 메모 입력 |
-| `SyncDocuments` | 대기 중인 원본 파일을 위키 페이지로 변환 |
+| `CaptureFromURL` | 웹 페이지 또는 **유튜브 자막**을 raw 폴더로 수집 |
+| `SyncDocuments` | 대기 중인 원본 파일(PDF, Word 등)을 위키 페이지로 변환 |
 | `SynthesizeKnowledge` | LLM을 사용하여 원본 메모를 위키 페이지로 컴파일 |
 | `OrganizeByTag` | 해시태그로 원본 메모 목록 조회 |
 | `EvolutionAudit` | 최근 의도 로그 반환 (패턴 분석용) |
@@ -148,9 +161,15 @@ ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowled
 
 `.env` 주요 설정:
 ```env
-WIKI_ROOT_PATH=/path/to/your/wiki   # 위키 볼륨으로 마운트할 호스트 경로
-MCP_TRANSPORT=http                   # 'http': Streamable HTTP, 'stdio': 직접 연동
+WIKI_ROOT_PATH=/path/to/your/wiki        # 위키 볼륨으로 마운트할 호스트 경로
+MCP_TRANSPORT=http                        # 'http': Streamable HTTP, 'stdio': 직접 연동
 MCP_PORT=15252
+
+# 시맨틱 검색 (Ollama 필요)
+EMBEDDING_MODEL=nomic-embed-text         # 실행: ollama pull nomic-embed-text
+
+# 자동 진화 스케줄러
+EVOLUTION_INTERVAL_HOURS=6               # 0으로 설정 시 비활성화
 ```
 
 #### 방법 2. 직접 실행 (Local Python)
