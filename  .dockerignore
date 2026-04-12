@@ -1,0 +1,32 @@
+# VCS
+.git
+.gitignore
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+
+# Node.js legacy
+node_modules/
+dist/
+package.json
+package-lock.json
+tsconfig.json
+
+# Local Data (Should be mounted via volumes)
+wiki/
+config.json
+
+# Docker
+Dockerfile
+docker-compose.yml
+.dockerignore
