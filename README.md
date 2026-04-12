@@ -76,7 +76,7 @@ The modern, stable transport method. Add to your agent's `mcp_config.json`:
 
 ```json
 "ConnectWiki": {
-  "url": "http://localhost:15252/mcp"
+  "serverUrl": "http://localhost:15252/mcp"
 }
 ```
 
@@ -166,7 +166,7 @@ MCP_PORT=15252
 
 ```json
 "ConnectWiki": {
-  "url": "http://localhost:15252/mcp"
+  "serverUrl": "http://localhost:15252/mcp"
 }
 ```
 

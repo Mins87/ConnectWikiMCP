@@ -76,9 +76,21 @@ class WikiManager:
         mtime = datetime.fromtimestamp(file_path.stat().st_mtime)
         return WikiPage(name=name, content=content, mtime=mtime)
 
+    @property
+    def history_dir(self) -> Path:
+        return self.root_dir / "history"
+
     def write_page(self, name: str, content: str) -> None:
         file_path = self.pages_dir / f"{name}.md"
         file_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Back up the existing version before overwriting
+        if file_path.exists():
+            timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+            backup_path = self.history_dir / name / f"{timestamp}.md"
+            backup_path.parent.mkdir(parents=True, exist_ok=True)
+            backup_path.write_text(file_path.read_text(encoding="utf-8"), encoding="utf-8")
+
         file_path.write_text(content, encoding="utf-8")
 
     def delete_page(self, name: str) -> None:

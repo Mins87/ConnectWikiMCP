@@ -2,3 +2,5 @@ mcp[sse]
 httpx
 markitdown
 pydantic-settings
+trafilatura
+youtube-transcript-api

@@ -1,14 +1,15 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import functools
 import inspect
 import json
 import logging
 import os
+import socket
 import sys
 import threading
-import contextlib
-import socket
 from typing import Any, Callable
 
 from mcp.server.fastmcp import FastMCP
@@ -150,6 +151,56 @@ async def CaptureQuickNote(name: str, content: str) -> str:
 
     filename = wiki_manager.ingest_raw(name, content)
     return f"Quick note captured successfully as '{filename}'."
+
+
+@mcp.tool()
+@autonomous_action
+async def CaptureFromURL(url: str, name: str | None = None) -> str:
+    """Capture content from a web page or YouTube video URL into the raw folder.
+    
+    - For regular URLs: extracts clean article text via trafilatura.
+    - For YouTube URLs: fetches the video transcript.
+    - Saves the result as a raw note for later synthesis with SynthesizeKnowledge.
+    """
+    import re as _re
+
+    yt_pattern = _re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)")
+    yt_match = yt_pattern.search(url)
+
+    if yt_match:
+        video_id = yt_match.group(1)
+        try:
+            from youtube_transcript_api import YouTubeTranscriptApi
+            transcript_list = await asyncio.to_thread(
+                YouTubeTranscriptApi.get_transcript, video_id, languages=["ko", "en"]
+            )
+            raw_text = " ".join(entry["text"] for entry in transcript_list)
+            note_name = name or f"youtube_{video_id}"
+            source_header = f"# {note_name}\n\n> Source: {url}\n\n"
+            content = source_header + raw_text
+        except Exception as exc:
+            return f"Failed to fetch YouTube transcript: {exc}"
+    else:
+        try:
+            import trafilatura
+            downloaded = await asyncio.to_thread(trafilatura.fetch_url, url)
+            if not downloaded:
+                return f"Failed to download URL: {url}"
+            raw_text = await asyncio.to_thread(
+                trafilatura.extract, downloaded,
+                include_comments=False, include_tables=True
+            )
+            if not raw_text:
+                return f"Could not extract readable content from: {url}"
+            note_name = name or url.split("//")[-1].split("/")[0]
+            source_header = f"# {note_name}\n\n> Source: {url}\n\n"
+            content = source_header + raw_text
+        except Exception as exc:
+            return f"Failed to capture URL: {exc}"
+
+    from wiki_manager import wiki_manager
+    filename = wiki_manager.ingest_raw(note_name, content)
+    return f"Captured '{url}' as raw note '{filename}'. Use SynthesizeKnowledge to compile it into the wiki."
 
 
 @mcp.tool()
