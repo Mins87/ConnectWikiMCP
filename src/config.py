@@ -7,13 +7,17 @@ from pydantic import BaseModel, Field
 LocalLlmType = Literal['ollama', 'llamacpp', 'external']
 
 class Config(BaseModel):
-    wiki_root_path: str = Field(default=str(Path.cwd() / "wiki"))
+    wiki_root_path: str = Field(default=str(Path.cwd() / "wiki"), alias="wikiRootPath")
     local_llm_type: LocalLlmType = "ollama"
     local_llm_api_url: str = "http://localhost:11434"
     local_llm_model: str = "gemma4-E4B-it"
     local_llm_api_key: Optional[str] = None
     mcp_port: int = 8000
-    python_command: str = "python" # Now mostly for reference if needed
+    python_command: str = "python"
+
+    model_config = {
+        "populate_by_name": True
+    }
 
 class ConfigManager:
     def __init__(self):

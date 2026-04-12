@@ -1,4 +1,4 @@
-# 🚀 ConnectWikiMCP v1.2.5 (Hybrid Edition)
+# 🚀 ConnectWikiMCP v1.3.0 (Autonomous Intelligence Edition)
 
 [English](#-english) | [한국어](#-한국어)
 
@@ -12,9 +12,16 @@ ConnectWikiMCP is an autonomous knowledge management server designed to transfor
 ### Features
 - **Hybrid Transport Layer**: Supports both STDIO (local collaboration) and SSE (cloud integration) simultaneously.
 - **Hierarchical Knowledge Structure**: Scales knowledge management using a `Category/Sub-Category/Page` system.
-- **Automatic Document Sync**: Converts various source files (PDF, Word, etc.) into AI-optimized Markdown.
-- **Self-Evolving Intelligence**: Analyzes usage patterns to automatically update AI behavior guidelines (`Intelligence.md`).
-- **Semantic Toolset**: Provides advanced tools for connectivity analysis and knowledge graph visualization.
+- **Automatic Document Sync**: Converts source files (PDF, Word, etc.) into AI-optimized Markdown.
+- **Background AI Enrichment**: Automatically adds tags and [[WikiLinks]] to new pages using local LLM without blocking.
+- **Self-Evolving Intelligence**: Automatically updates AI behavior guidelines and aggregates logs.
+- **Safe Bootstrap & Reset**: Ensures official docs are present in the wiki and provides a `ResetSystemDocs` tool for force-sync.
+- **Semantic Toolset**: Advanced tools for connectivity analysis and knowledge graph visualization.
+
+### 📁 Documentation
+Detailed guides on system architecture and autonomous intelligence:
+- **[System Intelligence Manual](docs/system/Intelligence.md)**: Rules for AI autonomous enrichment and maintenance.
+- **[Setup & User Guide](docs/system/UserGuide.md)**: Installation, configuration, and tool usage.
 
 ### Usage
 Interact with your AI agent (Claude, Gemini, etc.) using natural language:
@@ -69,8 +76,15 @@ ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowled
 - **하이브리드 전송 계층 (Hybrid Transport)**: STDIO(로컬 협업)와 SSE(클라우드 연동)를 동시에 지원합니다.
 - **계층형 지식 구조**: `분류/중분류/페이지` 체계를 통해 대규모 지식도 체계적으로 관리합니다.
 - **자동 문서 동기화**: PDF, Word 등 다양한 원본 문서를 AI가 읽기 좋은 Markdown으로 자동 변환합니다.
-- **자가 진화 지능**: 사용 패턴과 로그를 분석하여 AI 에이전트 스스로의 행동 지침(`Intelligence.md`)을 업데이트합니다.
-- **시맨틱 도구 도구**: 단순 저장을 넘어 지식 간의 연결성 분석 및 그래프 시각화 정보를 제공합니다.
+- **백그라운드 AI 지능 보강**: 로컬 LLM을 통해 저장되는 모든 페이지에 태그와 [[WikiLinks]]를 자동으로 추가합니다.
+- **자가 진화 지능**: 사용 패턴과 로그를 분석하여 AI 행동 지침을 스스로 업데이트합니다.
+- **안전 부트스트랩 및 초기화**: 가이드 문서를 위키에 자동 배치하고, `ResetSystemDocs`로 상시 초기화가 가능합니다.
+- **시맨틱 도구 도구**: 지식 간의 연결성 분석 및 그래프 시각화 정보를 제공합니다.
+
+### 📁 핵심 문서
+시스템 아키텍처 및 자율 지능 작동 방식에 대한 상세 가이드는 다음 경로에서 확인할 수 있습니다:
+- **[System Intelligence Manual](docs/system/Intelligence.md)**: AI 자율 보강 및 유지보수 규칙.
+- **[Setup & User Guide](docs/system/UserGuide.md)**: 설치, 설정 및 도구 활용 가이드.
 
 ### 사용법
 AI 에이전트(Claude, Gemini 등)에게 자연어로 명령하여 지식을 관리할 수 있습니다.

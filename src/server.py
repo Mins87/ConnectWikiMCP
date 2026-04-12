@@ -1,9 +1,12 @@
 import logging
 import json
+import functools
+from typing import Any, Callable
 from mcp.server.fastmcp import FastMCP
 from config import config_manager
 from wiki_manager import wiki_manager
 from llm_client import llm_client
+from maintenance_manager import maintenance_manager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -12,11 +15,31 @@ logger = logging.getLogger("connect-wiki-mcp")
 # Initialize FastMCP server
 mcp = FastMCP("ConnectWikiMCP")
 
-def _log(query: str, tool: str, outcome: str):
-    """Helper to log internal intents."""
-    wiki_manager.log_intent(query, tool, outcome)
+def autonomous_action(func: Callable) -> Callable:
+    """Interceptor to force logging and maintenance for every tool call."""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs) -> Any:
+        tool_name = func.__name__
+        # Create a descriptive query for logging
+        query_parts = [str(v) for v in args] + [f"{k}={v}" for k, v in kwargs.items()]
+        query = f"Executed {tool_name} with: {', '.join(query_parts)}"
+        
+        try:
+            result = await func(*args, **kwargs)
+            # System enforced logging
+            wiki_manager.log_intent(query, tool_name, "Success")
+            # Trigger autonomous maintenance with arguments
+            await maintenance_manager.perform_maintenance(tool_name, "Success", **kwargs)
+            return result
+        except Exception as e:
+            outcome = f"Failed: {str(e)}"
+            wiki_manager.log_intent(query, tool_name, outcome)
+            await maintenance_manager.perform_maintenance(tool_name, outcome, **kwargs)
+            raise e
+    return wrapper
 
 @mcp.tool()
+@autonomous_action
 async def FetchWikiPage(name: str) -> str:
     """
     Read a finalized Wiki page content.
@@ -24,22 +47,21 @@ async def FetchWikiPage(name: str) -> str:
     """
     page = wiki_manager.read_page(name)
     if not page:
-        _log(f"Fetch page '{name}'", "FetchWikiPage", "Failed: Not found")
         return f"Page '{name}' not found."
-    _log(f"Fetch page '{name}'", "FetchWikiPage", "Success")
     return page.content
 
 @mcp.tool()
+@autonomous_action
 async def SaveWikiContent(name: str, content: str) -> str:
     """
     Create or update a structured Wiki page.
     위키 페이지를 생성하거나 수정합니다. 지식을 정리하여 저장할 때 사용합니다.
     """
     wiki_manager.write_page(name, content)
-    _log(f"Save page '{name}'", "SaveWikiContent", "Success")
     return f"Page '{name}' saved successfully."
 
 @mcp.tool()
+@autonomous_action
 async def ListAllKnowledge() -> str:
     """
     List all finalized Wiki nodes/pages.
@@ -49,13 +71,13 @@ async def ListAllKnowledge() -> str:
     return "\n".join(pages)
 
 @mcp.tool()
+@autonomous_action
 async def SearchAcrossWiki(query: str) -> str:
     """
     Search for information across the entire Wiki knowledge base.
     위키 전체에서 특정 키워드나 내용을 검색합니다. (예: "A에 대해 찾아봐")
     """
     results = wiki_manager.search_wiki(query)
-    _log(f"Search for '{query}'", "SearchAcrossWiki", f"Success: {len(results)} matches")
     if not results:
         return "No results found."
     
@@ -67,18 +89,19 @@ async def SearchAcrossWiki(query: str) -> str:
     return "\n\n".join(text_results)
 
 @mcp.tool()
+@autonomous_action
 async def ExploreConnections(name: str) -> str:
     """
     Discover which pages reference or link to the specified topic (Backlinks).
     현재 주제를 언급하거나 연결된 다른 지식들(백링크)을 탐색합니다. (예: "뭐랑 연결돼있어?")
     """
     backlinks = wiki_manager.get_backlinks(name)
-    _log(f"Explore connections for '{name}'", "ExploreConnections", f"Success: {len(backlinks)} found")
     if not backlinks:
         return f"No connections found for '{name}'."
     return f"Resources linking to '{name}':\n" + "\n".join(backlinks)
 
 @mcp.tool()
+@autonomous_action
 async def AnalyzeKnowledgeGraph() -> str:
     """
     Retrieve the full relationship map of the knowledge base.
@@ -88,16 +111,17 @@ async def AnalyzeKnowledgeGraph() -> str:
     return json.dumps(graph, indent=2)
 
 @mcp.tool()
+@autonomous_action
 async def CaptureQuickNote(name: str, content: str) -> str:
     """
     Quickly save unprocessed thoughts or raw information for later.
     나중에 정리할 아이디어나 날것의 정보를 빠르게 메모로 남깁니다. (예: "메모해둬", "이거 기록해")
     """
     wiki_manager.ingest_raw(name, content)
-    _log(f"Capture note '{name}'", "CaptureQuickNote", "Success")
     return "Quick note captured successfully."
 
 @mcp.tool()
+@autonomous_action
 async def AccessOriginalSource(path: str) -> str:
     """
     Read original notes or converted source documents (PDF, Word, etc.).
@@ -109,6 +133,7 @@ async def AccessOriginalSource(path: str) -> str:
     return content
 
 @mcp.tool()
+@autonomous_action
 async def SyncDocuments() -> str:
     """
     Synchronize and convert all new source files to readable Markdown.
@@ -118,6 +143,7 @@ async def SyncDocuments() -> str:
     return f"Sync complete: {status['converted']} files prepared, {status['skipped']} already up-to-date."
 
 @mcp.tool()
+@autonomous_action
 async def SynthesizeKnowledge(raw_filename: str, target_page_name: str) -> str:
     """
     Use autonomous intelligence to compile raw notes into a formal Wiki page.
@@ -129,22 +155,22 @@ async def SynthesizeKnowledge(raw_filename: str, target_page_name: str) -> str:
     
     compiled = await llm_client.generate_wiki_page(raw_content)
     wiki_manager.write_page(target_page_name, compiled)
-    _log(f"Synthesize '{raw_filename}' to '{target_page_name}'", "SynthesizeKnowledge", "Success")
     return f"Knowledge synthesized into '{target_page_name}'."
 
 @mcp.tool()
+@autonomous_action
 async def OrganizeByTag(tag: str) -> str:
     """
     Find and group all notes associated with a specific hashtag.
     특정 태그(#)가 달린 모든 메모를 찾아 그룹화합니다. (예: "프로젝트A 태그된거 다 보여줘")
     """
     files = wiki_manager.get_tagged_raw_files(tag)
-    _log(f"Organize by tag '{tag}'", "OrganizeByTag", f"Success: {len(files)} files found")
     if not files:
         return f"No material found with tag #{tag}."
     return f"Found {len(files)} items tagged with #{tag}:\n" + "\n".join(files)
 
 @mcp.tool()
+@autonomous_action
 async def EvolutionAudit() -> str:
     """
     Analyze recent intent logs to identify user patterns and preferences.
@@ -156,6 +182,7 @@ async def EvolutionAudit() -> str:
     return json.dumps(logs, indent=2, ensure_ascii=False)
 
 @mcp.tool()
+@autonomous_action
 async def ConfigureSettings(
     wiki_root_path: str = None,
     local_llm_type: str = None,
@@ -175,6 +202,19 @@ async def ConfigureSettings(
     
     config_manager.update_config(updates)
     return "Settings updated."
+
+@mcp.tool()
+@autonomous_action
+async def ResetSystemDocs() -> str:
+    """
+    Forcefully reset and synchronize system documents from the repository to the wiki.
+    저장소의 공식 문서들을 위키로 강제 동기화(초기화)합니다.
+    """
+    try:
+        maintenance_manager.bootstrap_system_docs(overwrite=True)
+        return "System documentation has been reset to official repository versions."
+    except Exception as e:
+        return f"Reset failed: {e}"
 
 # --- Smart AI Workflows (Prompts) ---
 
@@ -222,6 +262,12 @@ def main():
     import os
     import threading
     config_manager.initialize()
+    
+    # Bootstrap official documentation to wiki if missing
+    try:
+        maintenance_manager.bootstrap_system_docs(overwrite=False)
+    except Exception as e:
+        logger.error(f"Failed to bootstrap documentation: {e}")
     
     transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
     port = config_manager.get_config().mcp_port
