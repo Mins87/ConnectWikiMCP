@@ -46,8 +46,8 @@ class WikiManager:
         return WikiPage(name, content, mtime)
 
     def write_page(self, name: str, content: str):
-        self.pages_dir.mkdir(parents=True, exist_ok=True)
         file_path = self.pages_dir / f"{name}.md"
+        file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding="utf-8")
 
     def delete_page(self, name: str):
@@ -58,7 +58,8 @@ class WikiManager:
     def list_pages(self) -> List[str]:
         if not self.pages_dir.exists():
             return []
-        return [f.stem for f in self.pages_dir.glob("*.md")]
+        return [str(f.relative_to(self.pages_dir).with_suffix('')).replace('\\', '/') 
+                for f in self.pages_dir.rglob("*.md")]
 
     def search_wiki(self, query: str) -> List[WikiPage]:
         results = []

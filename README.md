@@ -102,6 +102,35 @@ $env:PYTHONPATH="src"; python src/server.py
 PYTHONPATH=src python3 src/server.py
 ```
 
+## 🔌 MCP Integration Guide
+
+To use ConnectWikiMCP with your AI assistant (e.g., Claude Desktop, Antigravity), add the following to your `claude_desktop_config.json` or `mcp_config.json`.
+
+### Option A: Running via Docker (Recommended for isolation)
+Use this if you have the ConnectWikiMCP container running via `docker-compose`.
+
+```json
+"ConnectWiki": {
+  "command": "docker",
+  "args": ["exec", "-i", "connect-wiki-mcp", "python", "src/server.py"]
+}
+```
+
+### Option B: Running via Local Python (Faster & simpler)
+Use this if you have the dependencies installed locally in your virtual environment.
+
+```json
+"ConnectWiki": {
+  "command": "python",
+  "args": ["/absolute/path/to/ConnectWikiMCP/src/server.py"],
+  "env": {
+    "PYTHONPATH": "/absolute/path/to/ConnectWikiMCP/src"
+  }
+}
+```
+
+---
+
 > [!TIP]
 > **First Run**: On the first execution, the system will automatically create the `wiki/`, `wiki/raw/`, and `wiki/pages/` directories along with a default `wiki/config.json`. You can stop the server, adjust the config, and restart.
 
