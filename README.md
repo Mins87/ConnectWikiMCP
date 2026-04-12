@@ -180,4 +180,10 @@ docker logs connect-wiki-mcp
 
 ---
 
+## 📄 License
+
+This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
+
+---
+
 > **ConnectWikiMCP** - *Empowering AI to build better knowledge.*
