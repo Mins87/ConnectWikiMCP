@@ -20,8 +20,9 @@ COPY requirements.txt .
 # Install Python dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the source code
+# Copy the source code and documentation
 COPY src/ /app/src/
+COPY docs/ /app/docs/
 
 # Create a default wiki directory (should be mapped as a volume)
 RUN mkdir -p /app/wiki

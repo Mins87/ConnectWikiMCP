@@ -1,92 +1,82 @@
-import json
+from __future__ import annotations
+
 import logging
-import re
-from typing import List, Dict, Optional
+from typing import Any
+
 from llm_client import llm_client
 from wiki_manager import wiki_manager
 
-logger = logging.getLogger("intelligence-engine")
+logger = logging.getLogger("connect-wiki.intelligence")
+
 
 class IntelligenceEngine:
-    def __init__(self):
+    def __init__(self) -> None:
         self.wiki = wiki_manager
 
-    async def analyze_and_enrich(self, page_name: str, content: str) -> Optional[str]:
-        """
-        Analyze content, extract tags/links, and return an enriched version of the content.
-        Returns None if no enrichment was possible or needed.
-        """
-        logger.info(f"Analyzing page '{page_name}' for enrichment...")
-        
-        # 1. Get existing pages for link suggestion
+    async def analyze_and_enrich(self, page_name: str, content: str) -> str | None:
+        logger.info("Analyzing page '%s' for enrichment", page_name)
         all_pages = self.wiki.list_pages()
-        # Remove current page from suggestions
-        existing_pages = [p for p in all_pages if p != page_name]
-        
+        existing_pages = [page for page in all_pages if page != page_name]
+
         prompt = f"""
-You are an AI Knowledge Architect. Analyze the following wiki content.
-Task:
-1. Identify key topics and suggest 3-5 hashtags.
-2. Identify mentions of existing pages from the 'KNOWLEDGE_LIST' and suggest where to add [[WikiLinks]].
-
-KNOWLEDGE_LIST: {", ".join(existing_pages)}
-
-CONTENT TO ANALYZE:
----
-{content}
----
-
-Return ONLY a JSON object with this structure:
+Analyze the wiki page below.
+Return JSON only with this schema:
 {{
   "suggested_tags": ["tag1", "tag2"],
-  "suggested_links": ["PageName1", "PageName2"],
-  "summary": "one sentence summary"
+  "suggested_links": ["Existing/Page"],
+  "summary": "one sentence"
 }}
-"""
+Rules:
+- suggested_tags: 0 to 5 short lowercase tags without #.
+- suggested_links: only items that already exist in KNOWLEDGE_LIST.
+- summary: concise plain-text sentence.
+
+KNOWLEDGE_LIST:
+{existing_pages}
+
+PAGE_NAME:
+{page_name}
+
+CONTENT:
+{content}
+""".strip()
+
         try:
-            response_text = await llm_client.generate_wiki_page(prompt)
-            # Try to find JSON in the response
-            match = re.search(r'\{.*\}', response_text, re.DOTALL)
-            if not match:
-                logger.warning(f"No JSON found in AI response for '{page_name}'")
-                return None
-                
-            data = json.loads(match.group())
-            tags = data.get("suggested_tags", [])
-            links = data.get("suggested_links", [])
-            
-            # 2. Apply enrichment
-            modified = False
-            enriched_content = content.strip()
-            
-            # Add Tags if they don't exist
-            current_tags = self.wiki.extract_tags(content)
-            new_tags = [t for t in tags if t.lower() not in [ct.lower() for ct in current_tags]]
-            
-            if new_tags:
-                tag_str = " ".join([f"#{t}" for t in new_tags])
-                enriched_content += f"\n\n---\n**AI Generated Tags**: {tag_str}"
-                modified = True
-                
-            # Add suggested links as a footer if they aren't already linked
-            current_links = self.wiki.extract_links(content)
-            unlinked = [l for l in links if l not in current_links and l in all_pages]
-            
-            if unlinked:
-                link_str = ", ".join([f"[[{l}]]" for l in unlinked])
-                if not modified:
-                    enriched_content += "\n\n---"
-                enriched_content += f"\n**AI Suggested Connections**: {link_str}"
-                modified = True
-                
-            if modified:
-                logger.info(f"Page '{page_name}' enriched with AI intelligence.")
-                return enriched_content
-            
+            data = await llm_client.generate_json(
+                prompt,
+                system_prompt="You are an AI Knowledge Architect. Respond with valid JSON only.",
+            )
+        except Exception as exc:
+            logger.error("Intelligence analysis failed for '%s': %s", page_name, exc)
             return None
-            
-        except Exception as e:
-            logger.error(f"Intelligence analysis failed for '{page_name}': {e}")
+
+        return self._apply_enrichment(content=content, all_pages=all_pages, data=data)
+
+    def _apply_enrichment(self, *, content: str, all_pages: list[str], data: dict[str, Any]) -> str | None:
+        suggested_tags = [str(tag).strip().lower() for tag in data.get("suggested_tags", []) if str(tag).strip()]
+        suggested_links = [str(link).strip() for link in data.get("suggested_links", []) if str(link).strip()]
+        summary = str(data.get("summary", "")).strip()
+
+        current_tags = {tag.lower() for tag in self.wiki.extract_tags(content)}
+        current_links = set(self.wiki.extract_links(content))
+        valid_pages = set(all_pages)
+
+        new_tags = [tag for tag in suggested_tags if tag not in current_tags][:5]
+        new_links = [link for link in suggested_links if link in valid_pages and link not in current_links]
+
+        blocks = []
+        if summary:
+            blocks.append(f"**AI Summary**: {summary}")
+        if new_tags:
+            blocks.append("**AI Generated Tags**: " + " ".join(f"#{tag}" for tag in new_tags))
+        if new_links:
+            blocks.append("**AI Suggested Connections**: " + ", ".join(f"[[{link}]]" for link in new_links))
+
+        if not blocks:
             return None
+
+        enriched = content.rstrip() + "\n\n---\n" + "\n".join(blocks)
+        return enriched
+
 
 intelligence_engine = IntelligenceEngine()
