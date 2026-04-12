@@ -1,4 +1,5 @@
 import logging
+import json
 from mcp.server.fastmcp import FastMCP
 from config import config_manager
 from wiki_manager import wiki_manager
@@ -46,6 +47,20 @@ async def search_wiki(query: str) -> str:
     return "\n\n".join(text_results)
 
 @mcp.tool()
+async def get_backlinks(name: str) -> str:
+    """Get all pages that link to the specified page."""
+    backlinks = wiki_manager.get_backlinks(name)
+    if not backlinks:
+        return f"No backlinks found for '{name}'."
+    return f"Pages linking to '{name}':\n" + "\n".join(backlinks)
+
+@mcp.tool()
+async def get_graph() -> str:
+    """Get the full knowledge graph (nodes and edges) in JSON format."""
+    graph = wiki_manager.get_graph_data()
+    return json.dumps(graph, indent=2)
+
+@mcp.tool()
 async def ingest_raw(name: str, content: str) -> str:
     """Save raw information for later compilation."""
     wiki_manager.ingest_raw(name, content)
@@ -77,6 +92,14 @@ async def compile_with_local_llm(raw_filename: str, target_page_name: str) -> st
     return f"Wiki page '{target_page_name}' created from raw content."
 
 @mcp.tool()
+async def auto_archive_by_tag(tag: str) -> str:
+    """Automatically find all raw notes with a specific #tag and suggest a compilation."""
+    files = wiki_manager.get_tagged_raw_files(tag)
+    if not files:
+        return f"No raw files found with tag #{tag}."
+    return f"Found {len(files)} files with tag #{tag}:\n" + "\n".join(files) + "\n\nPlease use these to update the wiki."
+
+@mcp.tool()
 async def set_config(
     wiki_root_path: str = None,
     local_llm_type: str = None,
@@ -94,6 +117,36 @@ async def set_config(
     
     config_manager.update_config(updates)
     return "Configuration updated successfully."
+
+# --- MCP Prompts ---
+
+@mcp.prompt()
+def smart_compile(keyword: str) -> str:
+    """A prompt to help the AI compile structured knowledge for a specific keyword."""
+    return f"""
+You are a Knowledge Management Expert. I want to compile or update a Wiki page for the keyword: "{keyword}".
+
+Please follow these steps:
+1. Use 'search_wiki' to see if a page for "{keyword}" already exists.
+2. Use 'auto_archive_by_tag' with the tag "{keyword}" to find new raw notes.
+3. Read the relevant raw files and the existing wiki page (if any).
+4. Synthesize all information into a high-quality, structured Markdown Wiki page.
+5. Use 'write_page' to save the final result.
+
+Focus on clarity, cross-linking (using [[PageName]]), and capturing all new insights.
+"""
+
+@mcp.prompt()
+def wiki_audit() -> str:
+    """A prompt to ask the AI to audit the wiki and suggest improvements."""
+    return """
+You are a Knowledge Curator. Please audit the current state of the Wiki.
+
+1. Use 'list_pages' and 'get_graph' to understand the structure.
+2. Scan the 'raw/' directory using 'sync_raw' and 'list_raw' to find unprocessed information.
+3. Identify gaps, redundant pages, or missing connections.
+4. Suggest a list of actions (e.g., 'Compile X', 'Link A to B') to improve the total knowledge base.
+"""
 
 def main():
     config_manager.initialize()

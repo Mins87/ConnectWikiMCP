@@ -1,7 +1,8 @@
 import os
+import re
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Set
 from markitdown import MarkItDown
 from config import config_manager
 
@@ -49,6 +50,8 @@ class WikiManager:
             file_path.unlink()
 
     def list_pages(self) -> List[str]:
+        if not self.pages_dir.exists():
+            return []
         return [f.stem for f in self.pages_dir.glob("*.md")]
 
     def search_wiki(self, query: str) -> List[WikiPage]:
@@ -59,9 +62,61 @@ class WikiManager:
                 results.append(page)
         return results
 
+    def extract_links(self, content: str) -> List[str]:
+        """Extract [[WikiLinks]] from content."""
+        return list(set(re.findall(r'\[\[(.*?)\]\]', content)))
+
+    def extract_tags(self, content: str) -> List[str]:
+        """Extract #tags from content."""
+        return list(set(re.findall(r'#(\w+)', content)))
+
+    def get_backlinks(self, target_page: str) -> List[str]:
+        """Find pages that link to target_page."""
+        backlinks = []
+        for name in self.list_pages():
+            if name == target_page:
+                continue
+            page = self.read_page(name)
+            if page and target_page in self.extract_links(page.content):
+                backlinks.append(name)
+        return backlinks
+
+    def get_graph_data(self) -> Dict:
+        """Return full knowledge graph nodes and edges."""
+        nodes = []
+        edges = []
+        pages = self.list_pages()
+        
+        for name in pages:
+            nodes.append({"id": name, "type": "page"})
+            page = self.read_page(name)
+            if page:
+                links = self.extract_links(page.content)
+                for link in links:
+                    if link in pages: # Only link to existing pages
+                        edges.append({"source": name, "target": link})
+
+        return {"nodes": nodes, "edges": edges}
+
+    def get_tagged_raw_files(self, tag: str) -> List[str]:
+        """Find raw files containing a specific hashtag."""
+        results = []
+        for rel_path in self.list_raw():
+            # Use already cached/converted content via read_raw logic
+            # (In-memory check or file check)
+            file_path = self.raw_dir / rel_path
+            if file_path.suffix.lower() == ".md":
+                content = file_path.read_text(encoding="utf-8")
+                if f"#{tag}" in content:
+                    results.append(rel_path)
+            # Binary files tagging is hard without OCR/LLM, 
+            # so we focus on MD and Transformed MD for now.
+        return results
+
     def ingest_raw(self, name: str, content: str):
         timestamp = datetime.now().isoformat().replace(":", "-").replace(".", "-")
         filename = f"{timestamp}-{name}.md"
+        self.raw_dir.mkdir(parents=True, exist_ok=True)
         (self.raw_dir / filename).write_text(content, encoding="utf-8")
 
     async def read_raw(self, relative_path: str) -> Optional[str]:
@@ -99,6 +154,8 @@ class WikiManager:
     def sync_raw_folder(self) -> Dict[str, int]:
         converted = 0
         skipped = 0
+        if not self.raw_dir.exists():
+            return {"converted": 0, "skipped": 0}
 
         for file_path in self.raw_dir.rglob("*"):
             if file_path.is_dir():
@@ -125,6 +182,8 @@ class WikiManager:
         return {"converted": converted, "skipped": skipped}
 
     def list_raw(self) -> List[str]:
+        if not self.raw_dir.exists():
+            return []
         return [str(f.relative_to(self.raw_dir)) for f in self.raw_dir.rglob("*") if f.is_file()]
 
 wiki_manager = WikiManager()
