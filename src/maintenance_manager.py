@@ -48,26 +48,32 @@ class MaintenanceManager:
             logger.exception("AI enrichment failed for '%s'", page_name)
 
     def _update_logs_index(self) -> None:
-        logs_path = self.wiki.pages_dir / "Project" / "ConnectWiki" / "Logs"
-        if not logs_path.exists():
-            return
-        logs = [path for path in logs_path.rglob("*.md") if path.is_file() and path.name.lower() != "index.md"]
-        if not logs:
-            return
-        logs.sort(key=lambda path: path.name, reverse=True)
+        """Auto-index any directory containing date-prefixed log pages (YYYY-MM-DD_*)."""
+        date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}[_-]")
+        log_dirs: dict[Path, list[Path]] = {}
 
-        lines = [
-            "# Project Activity Logs Index",
-            "",
-            "> [!NOTE]",
-            "> 이 페이지는 시스템에 의해 자동으로 관리됩니다.",
-            "",
-        ]
-        for log in logs:
-            rel = log.relative_to(self.wiki.pages_dir).with_suffix("")
-            name = rel.as_posix()
-            lines.append(f"- [[{name}|{log.stem}]]")
-        self.wiki.write_page("Project/ConnectWiki/Logs/Index", "\n".join(lines) + "\n")
+        for md_file in self.wiki.pages_dir.rglob("*.md"):
+            if md_file.is_file() and date_pattern.match(md_file.stem) and md_file.name.lower() != "index.md":
+                log_dirs.setdefault(md_file.parent, []).append(md_file)
+
+        for log_dir, logs in log_dirs.items():
+            logs.sort(key=lambda p: p.name, reverse=True)
+            rel_dir = log_dir.relative_to(self.wiki.pages_dir)
+            index_page_name = (rel_dir / "Index").as_posix()
+
+            lines = [
+                f"# {rel_dir.name} Log Index",
+                "",
+                "> [!NOTE]",
+                "> This index is automatically managed by the system.",
+                "",
+            ]
+            for log in logs:
+                rel = log.relative_to(self.wiki.pages_dir).with_suffix("")
+                name = rel.as_posix()
+                lines.append(f"- [[{name}|{log.stem}]]")
+            self.wiki.write_page(index_page_name, "\n".join(lines) + "\n")
+
 
     def _detect_spec_drift(self) -> bool:
         spec_page = self.wiki.pages_dir / "Project" / "ConnectWiki" / "Specification.md"

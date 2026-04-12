@@ -20,6 +20,18 @@ logger = logging.getLogger("connect-wiki.server")
 mcp = FastMCP("ConnectWikiMCP")
 REDACT_KEYS = {"local_llm_api_key", "api_key", "authorization", "token", "password", "secret"}
 
+# Tools that only read data — skip maintenance I/O for these
+READ_ONLY_TOOLS = {
+    "ListAllKnowledge",
+    "FetchWikiPage",
+    "SearchAcrossWiki",
+    "ExploreConnections",
+    "AnalyzeKnowledgeGraph",
+    "EvolutionAudit",
+    "AccessOriginalSource",
+    "OrganizeByTag",
+}
+
 
 def _sanitize_bound_args(func: Callable[..., Any], args: tuple[Any, ...], kwargs: dict[str, Any]) -> dict[str, Any]:
     bound = inspect.signature(func).bind_partial(*args, **kwargs)
@@ -46,6 +58,7 @@ def autonomous_action(func: Callable[..., Any]) -> Callable[..., Any]:
         from wiki_manager import wiki_manager
 
         tool_name = func.__name__
+        is_read_only = tool_name in READ_ONLY_TOOLS
         metadata = _sanitize_bound_args(func, args, kwargs)
         query = f"Executed {tool_name}"
 
@@ -54,12 +67,14 @@ def autonomous_action(func: Callable[..., Any]) -> Callable[..., Any]:
             with contextlib.redirect_stdout(sys.stderr):
                 result = await func(*args, **kwargs)
             wiki_manager.log_intent(query, tool_name, "Success", metadata)
-            await maintenance_manager.perform_maintenance(tool_name, "Success", metadata)
+            if not is_read_only:
+                await maintenance_manager.perform_maintenance(tool_name, "Success", metadata)
             return result
         except Exception as exc:
             outcome = f"Failed: {exc}"
             wiki_manager.log_intent(query, tool_name, outcome, metadata)
-            await maintenance_manager.perform_maintenance(tool_name, outcome, metadata)
+            if not is_read_only:
+                await maintenance_manager.perform_maintenance(tool_name, outcome, metadata)
             raise
 
     return wrapper
