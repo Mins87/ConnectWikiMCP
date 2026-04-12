@@ -103,6 +103,7 @@ venv.bak/
 wiki/
 config.json
 logs/
+wiki/logs/
 
 # MacOS
 .DS_Store

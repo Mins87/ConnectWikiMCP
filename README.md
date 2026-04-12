@@ -1,8 +1,8 @@
-# 🚀 ConnectWikiMCP v1.1.0 (Semantic Edition)
+# 🚀 ConnectWikiMCP v1.2.0 (Intelligence Edition)
 
 > **Building an Autonomous Second Brain with Andrej Karpathy's "LLM Wiki" Philosophy.**
 
-ConnectWikiMCP is a professional knowledge management server that transforms fragmented information into a structured, interconnected **Knowledge Graph**. Designed for seamless AI interaction, it prioritizes natural language understanding over complex commands.
+ConnectWikiMCP is an advanced knowledge management server that transforms fragmented information into a structured, interconnected **Knowledge Graph**. It features a self-improving intelligence engine that learns from your usage patterns to become your perfect digital assistant.
 
 ---
 
@@ -10,21 +10,22 @@ ConnectWikiMCP is a professional knowledge management server that transforms fra
 Your Wiki follows a strategic three-tier workflow:
 1.  **`raw/` (Original Source)**: Unprocessed notes and documents (PDF, Word, etc.).
 2.  **`transformed/` (Digital Twin)**: AI-readable Markdown versions of your raw documents.
-3.  **`pages/` (Knowledge Graph)**: The finalized, cross-linked Source of Truth.
+3.  **`pages/` (Knowledge Graph)**: Finalized, cross-linked Source of Truth.
 
 ---
 
-## 🧠 Semantic AI Intelligence
+## 🧠 Self-Improving Intelligence (New in v1.2.0)
+
+### ✍️ Shared Intelligence Manual
+The system maintains a specialized wiki page: `System/Intelligence.md`. This is the AI's "Operating Manual." 
+- **Enforced English**: Per user request, the system is now configured to work exclusively in **English**.
+- **Self-Evolution**: Use the `EvolveSystemIntelligence` prompt to have the AI audit its logs and update its own behavior rules.
 
 ### 🗣️ Natural Intent Matching
-You don't need to learn a manual. Simply tell your AI agent (Claude, Gemini) what you want in plain Korean or English:
-- *"이 프로젝트 기획안 정리해줘"*
-- *"이 파일이랑 연결된 지식이 뭐가 있지?"*
-- *"오늘 메모한 내용들 요약해서 위키에 넣어줘"*
-AI will automatically map your intent to the correct underlying tools.
-
-### 🕸️ Knowledge Connectivity
-The system automatically tracks **WikiLinks** (`[[PageName]]`) and **Hashtags** (`#tag`), building a vivid graph of how your ideas relate to each other.
+Simply talk to your AI agent (Claude, Gemini) in plain English:
+- *"Organize this project draft into the wiki"*
+- *"What other knowledge is connected to this file?"*
+- *"Summarize today's notes and save them"*
 
 ---
 
@@ -48,25 +49,27 @@ $env:PYTHONPATH="src"; python src/server.py
 
 | Human Intent | System Action | Purpose |
 | :--- | :--- | :--- |
-| **"지식 읽어줘"** | `FetchWikiPage` | Retrieves a finalized Wiki entry. |
-| **"지식 저장해"** | `SaveWikiContent` | Updates your knowledge graph. |
-| **"전체 목록"** | `ListAllKnowledge` | Catalogs all available knowledge nodes. |
-| **"지식 검색"** | `SearchAcrossWiki` | Full-text search across your second brain. |
-| **"연결고리 탐색"** | `ExploreConnections` | Discovers backlinks and references. |
-| **"지식망 분석"** | `AnalyzeKnowledgeGraph`| Analyzes total connectivity (Nodes/Edges). |
-| **"메모 기록"** | `CaptureQuickNote` | Rapidly captures raw thoughts. |
-| **"원본 소스 보기"** | `AccessOriginalSource` | Reads raw notes or documents. |
-| **"문서 동기화"** | `SyncDocuments` | Processes new files into Markdown. |
-| **"지식 합성/요약"** | `SynthesizeKnowledge` | LLM-powered compilation of raw data. |
-| **"키워드 정리"** | `OrganizeByTag` | Groups information by hashtag. |
+| **"Read knowledge"** | `FetchWikiPage` | Retrieves a finalized Wiki entry. |
+| **"Save knowledge"** | `SaveWikiContent` | Updates your knowledge graph. |
+| **"Knowledge List"** | `ListAllKnowledge` | Catalogs all available knowledge nodes. |
+| **"Search Wiki"** | `SearchAcrossWiki` | Full-text search across your second brain. |
+| **"Explore Link"** | `ExploreConnections` | Discovers backlinks and references. |
+| **"Graph Analysis"** | `AnalyzeKnowledgeGraph`| Analyzes total connectivity (Nodes/Edges). |
+| **"Quick Note"** | `CaptureQuickNote` | Rapidly captures raw thoughts. |
+| **"Access Source"** | `AccessOriginalSource` | Reads raw notes or documents. |
+| **"Sync Files"** | `SyncDocuments` | Processes new files into Markdown. |
+| **"Synthesize/Summarize"**| `SynthesizeKnowledge` | AI-powered compilation of raw data. |
+| **"Group by Tag"** | `OrganizeByTag` | Groups information by hashtag. |
+| **"Self-Audit"** | `EvolutionAudit` | Analyzes usage logs for learning. |
 
 ---
 
 ## 🎭 Intelligent AI Workflows (Prompts)
 Available in your MCP client's **Prompts** menu:
 
-- **`AutomatedCompilation`**: Launches an autonomous agent to build a Wiki page from a keyword.
-- **`KnowledgeAudit`**: Asks the AI to heal the graph by finding gaps and suggesting new links.
+- **`AutomatedCompilation`**: Launches an autonomous agent to build a Wiki page.
+- **`KnowledgeAudit`**: Suggests structural improvements for your graph.
+- **`EvolveSystemIntelligence`**: Triggers the self-improvement loop based on logs.
 
 ---
 

@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Dict, Set
@@ -28,6 +29,10 @@ class WikiManager:
     def transformed_dir(self) -> Path:
         return Path(config_manager.get_config().wiki_root_path) / "transformed"
 
+    @property
+    def logs_dir(self) -> Path:
+        return Path(config_manager.get_config().wiki_root_path) / "logs"
+
     def get_transformed_path(self, relative_raw_path: str) -> Path:
         return self.transformed_dir / f"{relative_raw_path}.md"
 
@@ -41,6 +46,7 @@ class WikiManager:
         return WikiPage(name, content, mtime)
 
     def write_page(self, name: str, content: str):
+        self.pages_dir.mkdir(parents=True, exist_ok=True)
         file_path = self.pages_dir / f"{name}.md"
         file_path.write_text(content, encoding="utf-8")
 
@@ -102,16 +108,38 @@ class WikiManager:
         """Find raw files containing a specific hashtag."""
         results = []
         for rel_path in self.list_raw():
-            # Use already cached/converted content via read_raw logic
-            # (In-memory check or file check)
             file_path = self.raw_dir / rel_path
             if file_path.suffix.lower() == ".md":
                 content = file_path.read_text(encoding="utf-8")
                 if f"#{tag}" in content:
                     results.append(rel_path)
-            # Binary files tagging is hard without OCR/LLM, 
-            # so we focus on MD and Transformed MD for now.
         return results
+
+    def log_intent(self, query: str, tool_name: str, outcome: str):
+        """Log user query and tool outcome for self-improvement."""
+        self.logs_dir.mkdir(parents=True, exist_ok=True)
+        log_file = self.logs_dir / "intent_history.jsonl"
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "query": query,
+            "tool": tool_name,
+            "outcome": outcome
+        }
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+    def read_intent_logs(self, limit: int = 50) -> List[Dict]:
+        """Read the last N entries of intent logs."""
+        log_file = self.logs_dir / "intent_history.jsonl"
+        if not log_file.exists():
+            return []
+        
+        logs = []
+        with open(log_file, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+            for line in lines[-limit:]:
+                logs.append(json.loads(line))
+        return logs
 
     def ingest_raw(self, name: str, content: str):
         timestamp = datetime.now().isoformat().replace(":", "-").replace(".", "-")
