@@ -1,4 +1,4 @@
-mcp[cli]
+mcp[sse]
 httpx
 markitdown
 pydantic-settings

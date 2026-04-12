@@ -161,7 +161,8 @@ async def ConfigureSettings(
     local_llm_type: str = None,
     local_llm_api_url: str = None,
     local_llm_model: str = None,
-    local_llm_api_key: str = None
+    local_llm_api_key: str = None,
+    mcp_port: int = None
 ) -> str:
     """Update system behavior and connection settings."""
     updates = {}
@@ -170,6 +171,7 @@ async def ConfigureSettings(
     if local_llm_api_url: updates["local_llm_api_url"] = local_llm_api_url
     if local_llm_model: updates["local_llm_model"] = local_llm_model
     if local_llm_api_key: updates["local_llm_api_key"] = local_llm_api_key
+    if mcp_port: updates["mcp_port"] = mcp_port
     
     config_manager.update_config(updates)
     return "Settings updated."
@@ -217,8 +219,36 @@ Be statistical and precise. The goal is recursion: the system gets better at und
 """
 
 def main():
+    import os
+    import threading
     config_manager.initialize()
-    mcp.run()
+    
+    transport = os.getenv("MCP_TRANSPORT", "stdio").lower()
+    port = config_manager.get_config().mcp_port
+    logger.info(f"DEBUG: Selected Transport = {transport}")
+    logger.info(f"DEBUG: Selected Port = {port}")
+
+    def run_sse():
+        logger.info(f"Starting ConnectWikiMCP SSE background server on port {port}")
+        import uvicorn
+        app = mcp.sse_app()
+        uvicorn.run(app, host="0.0.0.0", port=port, log_level="error")
+
+    if transport == "hybrid":
+        logger.info("Starting ConnectWikiMCP in HYBRID mode (STDIO + SSE)")
+        # Start SSE in a background thread
+        sse_thread = threading.Thread(target=run_sse, daemon=True)
+        sse_thread.start()
+        # Run STDIO in the main thread
+        mcp.run(transport="stdio")
+    elif transport == "sse":
+        logger.info(f"Starting ConnectWikiMCP in SSE mode on port {port}")
+        import uvicorn
+        app = mcp.sse_app()
+        uvicorn.run(app, host="0.0.0.0", port=port)
+    else:
+        logger.info("Starting ConnectWikiMCP in STDIO mode")
+        mcp.run(transport="stdio")
 
 if __name__ == "__main__":
     main()

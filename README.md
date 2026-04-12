@@ -1,114 +1,50 @@
-# 🚀 ConnectWikiMCP v1.2.0 (Intelligence Edition)
+# 🚀 ConnectWikiMCP v1.2.5 (Hybrid Edition)
 
-> **Building an Autonomous Second Brain with Andrej Karpathy's "LLM Wiki" Philosophy.**
-
-ConnectWikiMCP is an advanced knowledge management server that transforms fragmented information into a structured, interconnected **Knowledge Graph**. It features a self-improving intelligence engine that learns from your usage patterns to become your perfect digital assistant.
+[English](#-english) | [한국어](#-한국어)
 
 ---
 
-## 🏗 Knowledge Architecture
-Your Wiki follows a strategic three-tier workflow:
-1.  **`raw/` (Original Source)**: Unprocessed notes and documents (PDF, Word, etc.).
-2.  **`transformed/` (Digital Twin)**: AI-readable Markdown versions of your raw documents.
-3.  **`pages/` (Knowledge Graph)**: Finalized, cross-linked Source of Truth.
+## 🇺🇸 English
 
----
+### Definition
+ConnectWikiMCP is an autonomous knowledge management server designed to transform fragmented information into a structured **Knowledge Graph**. Based on Andrej Karpathy's "LLM Wiki" philosophy and built on the Model Context Protocol (MCP), it enables AI agents to independently build, connect, and evolve a second brain.
 
-## 🧠 Self-Improving Intelligence (New in v1.2.0)
+### Features
+- **Hybrid Transport Layer**: Supports both STDIO (local collaboration) and SSE (cloud integration) simultaneously.
+- **Hierarchical Knowledge Structure**: Scales knowledge management using a `Category/Sub-Category/Page` system.
+- **Automatic Document Sync**: Converts various source files (PDF, Word, etc.) into AI-optimized Markdown.
+- **Self-Evolving Intelligence**: Analyzes usage patterns to automatically update AI behavior guidelines (`Intelligence.md`).
+- **Semantic Toolset**: Provides advanced tools for connectivity analysis and knowledge graph visualization.
 
-### ✍️ Shared Intelligence Manual
-The system maintains a specialized wiki page: `System/Intelligence.md`. This is the AI's "Operating Manual." 
-- **Enforced English**: Per user request, the system is now configured to work exclusively in **English**.
-- **Self-Evolution**: Use the `EvolveSystemIntelligence` prompt to have the AI audit its logs and update its own behavior rules.
+### Usage
+Interact with your AI agent (Claude, Gemini, etc.) using natural language:
+- "Organize today's meeting notes into the Project A category in the wiki."
+- "What other knowledge nodes are connected to this document?"
+- "Summarize all AI-related content in the wiki and generate a report."
 
-### 🗣️ Natural Intent Matching
-Simply talk to your AI agent (Claude, Gemini) in plain English:
-- *"Organize this project draft into the wiki"*
-- *"What other knowledge is connected to this file?"*
-- *"Summarize today's notes and save them"*
+### Installation Guide
 
----
+#### Choice 1. Direct Execution (Local Python)
+Best for quick development and testing.
+1.  **Install dependencies**: `pip install -r requirements.txt`
+2.  **Configuration**: Copy `.env.example` to `.env` and adjust settings.
+3.  **Run**: `PYTHONPATH=src python src/server.py`
 
-## 🚀 Local Setup Guide
+#### Choice 2. Docker Execution (Recommended)
+Best for stable, isolated production environments.
+1.  **Configuration**: Copy `.env.example` to `.env`.
+2.  **Build & Run**:
+    ```bash
+    docker-compose up --build -d
+    ```
+    *Note: Always use `--build` after modifying source code.*
 
-Follow these steps to set up ConnectWikiMCP on your local development machine.
+### MCP Registration Guide
 
-### 1. Prerequisites
-- **Python 3.10+**: Ensure you have a modern Python environment.
-- **Git**: For cloning the repository.
-- **MarkItDown Dependencies**: Some features (like OCR or specific document types) may require system-level libraries like `libmagic`.
+#### 1. STDIO (For Local Agents)
+Use for Claude Desktop or other local apps. Add to `mcp_config.json`:
 
-### 2. Installation
-```bash
-# Clone the repository
-git clone https://github.com/Mins87/ConnectWikiMCP.git
-cd ConnectWikiMCP
-
-# Create a virtual environment (Recommended)
-python -m venv venv
-
-# Activate the virtual environment
-# Windows:
-.\venv\Scripts\activate
-# Linux/macOS:
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-```
-
-## ⚙️ Configuration Reference
-
-On its first run, ConnectWikiMCP creates a `config.json` inside your designated `wiki/` folder. You can customize the server behavior by editing this file or by setting environment variables.
-
-### Configuration Fields
-
-| Key | Type | Default | Description |
-| :--- | :--- | :--- | :--- |
-| `wiki_root_path` | `String` | `./wiki` | The absolute path where the system stores all data (pages, raw notes, logs). |
-| `local_llm_type` | `String` | `"ollama"` | Choice of Backend: `"ollama"`, `"llamacpp, or `"external"`. |
-| `local_llm_api_url` | `String` | `...:11434` | The endpoint for your LLM inference engine. |
-| `local_llm_model` | `String` | `gemma4-E4B-it` | The specific model name to be used for synthesis. |
-| `local_llm_api_key` | `String` | `null` | Required only if `local_llm_type` is set to `"external"`. |
-
-### LLM Backend Setup
-
-#### 🐑 Ollama (Default)
-Fastest way for local setup. Ensure Ollama is running and the model is pulled (`ollama pull llama3.2`).
-- **URL**: `http://localhost:11434`
-- **Type**: `ollama`
-
-#### 🧩 llama.cpp
-Recommended for fine-tuned performance or GGUF models. Run `llama-server` with the `--api-key` if needed.
-- **URL**: `http://localhost:8080/v1`
-- **Type**: `llamacpp`
-
-#### 🌐 External API (OpenAI Compatible)
-Use any OpenAI-compatible API (e.g., Groq, TogetherAI, or OpenAI itself).
-- **Type**: `external`
-- **URL**: `https://api.openai.com/v1`
-- **API Key**: Your secret key.
-
----
-
-### 4. Running the Server
-To start the MCP server via STDIO (the default way MCP clients like Claude connect):
-
-```bash
-# Windows
-$env:PYTHONPATH="src"; python src/server.py
-
-# Linux/macOS
-PYTHONPATH=src python3 src/server.py
-```
-
-## 🔌 MCP Integration Guide
-
-To use ConnectWikiMCP with your AI assistant (e.g., Claude Desktop, Antigravity), add the following to your `claude_desktop_config.json` or `mcp_config.json`.
-
-### Option A: Running via Docker (Recommended for isolation)
-Use this if you have the ConnectWikiMCP container running via `docker-compose`.
-
+**[Via Docker]**
 ```json
 "ConnectWiki": {
   "command": "docker",
@@ -116,103 +52,71 @@ Use this if you have the ConnectWikiMCP container running via `docker-compose`.
 }
 ```
 
-### Option B: Running via Local Python (Faster & simpler)
-Use this if you have the dependencies installed locally in your virtual environment.
+#### 2. SSE (For Cloud Services)
+Use for Perplexity or other cloud platforms.
+1.  Check `.env` for `MCP_TRANSPORT=hybrid` or `sse`.
+2.  Expose port `8000` (e.g., via `ngrok http 8000`).
+3.  Register the provided HTTPS URL in the cloud service (e.g., `https://abcd.ngrok-free.app/sse`).
 
+---
+
+## 🇰🇷 한국어
+
+### 정의
+ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowledge Graph)**로 변환하고 관리하는 자율형 지식 관리 서버입니다. 안드레 카파시(Andrej Karpathy)의 "LLM Wiki" 철학을 MCP(Model Context Protocol) 기술과 결합하여, AI 에이전트가 스스로 지식을 구축하고 연결하며 진화시킬 수 있는 환경을 제공합니다.
+
+### 특징
+- **하이브리드 전송 계층 (Hybrid Transport)**: STDIO(로컬 협업)와 SSE(클라우드 연동)를 동시에 지원합니다.
+- **계층형 지식 구조**: `분류/중분류/페이지` 체계를 통해 대규모 지식도 체계적으로 관리합니다.
+- **자동 문서 동기화**: PDF, Word 등 다양한 원본 문서를 AI가 읽기 좋은 Markdown으로 자동 변환합니다.
+- **자가 진화 지능**: 사용 패턴과 로그를 분석하여 AI 에이전트 스스로의 행동 지침(`Intelligence.md`)을 업데이트합니다.
+- **시맨틱 도구 도구**: 단순 저장을 넘어 지식 간의 연결성 분석 및 그래프 시각화 정보를 제공합니다.
+
+### 사용법
+AI 에이전트(Claude, Gemini 등)에게 자연어로 명령하여 지식을 관리할 수 있습니다.
+- "오늘 회의록을 위키의 프로젝트A 분류에 정리해줘."
+- "이 문서와 연결된 다른 지식들이 뭐가 있지?"
+- "위키 전체에서 AI 관련 내용을 요약해서 리포트 작성해줘."
+
+### 설치 가이드
+
+#### 방법 1. 직접 실행 (Local Python)
+빠른 개발과 테스트가 필요할 때 권장합니다.
+1.  **의존성 설치**: `pip install -r requirements.txt`
+2.  **환경 설정**: `.env.example`을 `.env`로 복사하고 설정값을 수정합니다.
+3.  **실행**: `PYTHONPATH=src python src/server.py`
+
+#### 방법 2. 도커 실행 (Docker - 권장)
+격리된 환경에서 안정적으로 운영하고 싶을 때 권장합니다.
+1.  **환경 설정**: `.env.example`을 `.env`로 복사합니다.
+2.  **컨테이너 빌드 및 실행**:
+    ```bash
+    docker-compose up --build -d
+    ```
+
+### MCP 등록 가이드
+
+#### 1. STDIO 방식 (로컬 에이전트용)
+Claude Desktop 등 로컬 앱에서 연동할 때 사용합니다.
+
+**[도커 실행 시]**
 ```json
 "ConnectWiki": {
-  "command": "python",
-  "args": ["/absolute/path/to/ConnectWikiMCP/src/server.py"],
-  "env": {
-    "PYTHONPATH": "/absolute/path/to/ConnectWikiMCP/src"
-  }
+  "command": "docker",
+  "args": ["exec", "-i", "connect-wiki-mcp", "python", "src/server.py"]
 }
 ```
 
----
-
-> [!TIP]
-> **First Run**: On the first execution, the system will automatically create the `wiki/`, `wiki/raw/`, and `wiki/pages/` directories along with a default `wiki/config.json`. You can stop the server, adjust the config, and restart.
-
----
-
-## 🛠 Semantic Tool Reference
-
-| Human Intent | System Action | Purpose |
-| :--- | :--- | :--- |
-| **"Read knowledge"** | `FetchWikiPage` | Retrieves a finalized Wiki entry. |
-| **"Save knowledge"** | `SaveWikiContent` | Updates your knowledge graph. |
-| **"Knowledge List"** | `ListAllKnowledge` | Catalogs all available knowledge nodes. |
-| **"Search Wiki"** | `SearchAcrossWiki` | Full-text search across your second brain. |
-| **"Explore Link"** | `ExploreConnections` | Discovers backlinks and references. |
-| **"Graph Analysis"** | `AnalyzeKnowledgeGraph`| Analyzes total connectivity (Nodes/Edges). |
-| **"Quick Note"** | `CaptureQuickNote` | Rapidly captures raw thoughts. |
-| **"Access Source"** | `AccessOriginalSource` | Reads raw notes or documents. |
-| **"Sync Files"** | `SyncDocuments` | Processes new files into Markdown. |
-| **"Synthesize/Summarize"**| `SynthesizeKnowledge` | AI-powered compilation of raw data. |
-| **"Group by Tag"** | `OrganizeByTag` | Groups information by hashtag. |
-| **"Self-Audit"** | `EvolutionAudit` | Analyzes usage logs for learning. |
-
----
-
-## 🎭 Intelligent AI Workflows (Prompts)
-Available in your MCP client's **Prompts** menu:
-
-- **`AutomatedCompilation`**: Launches an autonomous agent to build a Wiki page.
-- **`KnowledgeAudit`**: Suggests structural improvements for your graph.
-- **`EvolveSystemIntelligence`**: Triggers the self-improvement loop based on logs.
-
----
-
-## 🚢 Docker Deployment Guide
-
-ConnectWikiMCP is designed to be fully containerized. To ensure your knowledge persists and the system can communicate with your local LLM, follow these configurations:
-
-### 1. Persistent Storage (Volumes)
-Your knowledge base must be mounted from the host to ensure it isn't lost when the container restarts.
-
-- **Host Path**: `./wiki` (Create this directory before running)
-- **Container Path**: `/app/wiki`
-
-### 2. Configuration via Docker Compose
-The recommended way to deploy is using the provided `docker-compose.yml`:
-
-```yaml
-services:
-  connect-wiki-mcp:
-    build: .
-    container_name: connect-wiki-mcp
-    stdin_open: true  # Required for MCP (STDIO)
-    tty: true        # Required for MCP (STDIO)
-    volumes:
-      - ./wiki:/app/wiki  # Map your local wiki folder
-    environment:
-      - WIKI_ROOT_PATH=/app/wiki
-      - LOCAL_LLM_TYPE=ollama  # ollama, llamacpp, or external
-      - LOCAL_LLM_API_URL=http://host.docker.internal:11434
-    extra_hosts:
-      - "host.docker.internal:host-gateway" # Allow container to talk to local host
-```
-
-### 3. Execution
-```bash
-# Start the server
-docker-compose up -d
-
-# Check if the server is healthy
-docker logs connect-wiki-mcp
-```
-
-> [!IMPORTANT]
-> **Permissions**: On Linux/macOS, ensure the `./wiki` directory has write permissions (`chmod -R 777 ./wiki`) so the container can save logs and wiki pages.
-> **Networking**: If using Ollama or llama.cpp on your host machine, use `http://host.docker.internal:[PORT]` to allow the Docker container to reach your machine's services.
+#### 2. SSE 방식 (클라우드 서비스용)
+Perplexity 등 클라우드 서비스에 서버를 등록할 때 사용합니다.
+1.  **.env 설정**: `MCP_TRANSPORT=hybrid` 또는 `sse`로 설정합니다.
+2.  **포트 개방**: `8000` 포트가 열려 있어야 합니다.
+3.  **외부 노출**: `ngrok http 8000` 등을 통해 외부 주소를 생성합니다.
+4.  **등록**: 클라우드 서비스에 HTTPS 주소(예: `https://abcd.ngrok-free.app/sse`)를 등록합니다.
 
 ---
 
 ## 📄 License
+MIT License
 
-This project is licensed under the **MIT License**. See the [LICENSE](LICENSE) file for details.
-
----
-
-> **ConnectWikiMCP** - *Empowering AI to build better knowledge.*
+> **ConnectWikiMCP** - *AI and Humans building a better knowledge garden together.*

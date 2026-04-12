@@ -4,11 +4,17 @@ services:
     container_name: connect-wiki-mcp
     stdin_open: true
     tty: true
+    ports:
+      - "${MCP_PORT:-8000}:${MCP_PORT:-8000}"
     volumes:
-      - ./wiki:/app/wiki
+      - "${WIKI_ROOT_PATH:-./wiki}:/app/wiki"
     environment:
       - WIKI_ROOT_PATH=/app/wiki
-      - LOCAL_LLM_TYPE=ollama
-      - LOCAL_LLM_API_URL=http://host.docker.internal:11434
+      - LOCAL_LLM_TYPE=${LOCAL_LLM_TYPE:-ollama}
+      - LOCAL_LLM_API_URL=${LOCAL_LLM_API_URL:-http://host.docker.internal:11434}
+      - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-gemma4-E4B-it}
+      - LOCAL_LLM_API_KEY=${LOCAL_LLM_API_KEY}
+      - MCP_TRANSPORT=${MCP_TRANSPORT:-stdio}
+      - MCP_PORT=${MCP_PORT:-8000}
     extra_hosts:
       - "host.docker.internal:host-gateway"

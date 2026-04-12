@@ -12,6 +12,7 @@ class Config(BaseModel):
     local_llm_api_url: str = "http://localhost:11434"
     local_llm_model: str = "gemma4-E4B-it"
     local_llm_api_key: Optional[str] = None
+    mcp_port: int = 8000
     python_command: str = "python" # Now mostly for reference if needed
 
 class ConfigManager:
@@ -28,6 +29,7 @@ class ConfigManager:
             local_llm_api_url=os.getenv("LOCAL_LLM_API_URL", "http://localhost:11434"),
             local_llm_model=os.getenv("LOCAL_LLM_MODEL", "gemma4-E4B-it"),
             local_llm_api_key=os.getenv("LOCAL_LLM_API_KEY"),
+            mcp_port=int(os.getenv("MCP_PORT", "8000")),
         )
 
     def initialize(self):
