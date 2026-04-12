@@ -1,4 +1,4 @@
-# Setup & User Guide (ConnectWiki v1.3.0)
+# Setup & User Guide (ConnectWiki v0.9.3-Alpha)
 
 This guide covers the installation, configuration, and utilization of the ConnectWiki system.
 

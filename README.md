@@ -1,4 +1,4 @@
-# 🚀 ConnectWikiMCP v1.3.0 (Autonomous Intelligence Edition)
+# 🚀 ConnectWikiMCP v0.9.3 (Alpha Edition)
 
 [English](#-english) | [한국어](#-한국어)
 
@@ -70,7 +70,7 @@ Use for Perplexity or other cloud platforms.
 ## 🇰🇷 한국어
 
 ### 정의
-ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowledge Graph)**로 변환하고 관리하는 자율형 지식 관리 서버입니다. 안드레 카파시(Andrej Karpathy)의 "LLM Wiki" 철학을 MCP(Model Context Protocol) 기술과 결합하여, AI 에이전트가 스스로 지식을 구축하고 연결하며 진화시킬 수 있는 환경을 제공합니다.
+ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowledge Graph)**로 변환하고 관리하는 자율형 지식 관리 서버입니다. (v0.9.3-Alpha 버전) 안드레 카파시(Andrej Karpathy)의 "LLM Wiki" 철학을 MCP(Model Context Protocol) 기술과 결합하여, AI 에이전트가 스스로 지식을 구축하고 연결하며 진화시킬 수 있는 환경을 제공합니다.
 
 ### 특징
 - **하이브리드 전송 계층 (Hybrid Transport)**: STDIO(로컬 협업)와 SSE(클라우드 연동)를 동시에 지원합니다.

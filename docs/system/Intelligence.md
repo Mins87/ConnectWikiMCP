@@ -1,4 +1,4 @@
-# System Intelligence Manual (Kernel Edition v1.3.0)
+# System Intelligence Manual (Kernel Edition v0.9.3-Alpha)
 
 This manual defines the autonomous intelligence and operational logic of ConnectWikiMCP.
 
