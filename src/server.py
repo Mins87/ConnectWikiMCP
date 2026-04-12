@@ -114,7 +114,7 @@ async def ListAllKnowledge() -> str:
 async def SearchAcrossWiki(query: str) -> str:
     from wiki_manager import wiki_manager
 
-    results = wiki_manager.search_wiki(query)
+    results = await wiki_manager.search_wiki_semantic(query)
     if not results:
         return "No results found."
 
@@ -123,6 +123,22 @@ async def SearchAcrossWiki(query: str) -> str:
         preview = page.content[:200] + "..." if len(page.content) > 200 else page.content
         chunks.append(f"## {page.name}\n{preview}")
     return "\n\n".join(chunks)
+
+
+@mcp.tool()
+@autonomous_action
+async def RebuildSearchIndex() -> str:
+    """Force a full rebuild of the semantic search vector index.
+    Run this after bulk-importing pages or if search results seem stale."""
+    from embedding_manager import embedding_manager
+    from wiki_manager import wiki_manager
+
+    pages = {
+        name: (page.content if (page := wiki_manager.read_page(name)) else "")
+        for name in wiki_manager.list_pages()
+    }
+    indexed = await embedding_manager.rebuild_index(pages)
+    return f"Search index rebuilt: {indexed} pages indexed."
 
 
 @mcp.tool()
@@ -330,16 +346,50 @@ def main() -> None:
 
     config_manager.initialize()
     transport = os.getenv("MCP_TRANSPORT", "http").lower()
-    port = config_manager.get_config().mcp_port
+    cfg = config_manager.get_config()
+    port = cfg.mcp_port
+
+    async def _evolution_scheduler() -> None:
+        interval_hours = cfg.evolution_interval_hours
+        if interval_hours <= 0:
+            logger.info("Evolution scheduler disabled (EVOLUTION_INTERVAL_HOURS=0).")
+            return
+        logger.info("Evolution scheduler started: runs every %dh.", interval_hours)
+        await asyncio.sleep(interval_hours * 3600)   # first run is delayed
+        while True:
+            try:
+                from maintenance_manager import maintenance_manager
+                summary = await maintenance_manager.run_evolution_cycle()
+                logger.info("Auto-evolution: %s", summary)
+            except Exception:
+                logger.exception("Evolution cycle failed")
+            await asyncio.sleep(interval_hours * 3600)
 
     def run_http() -> None:
         import uvicorn
+        from contextlib import asynccontextmanager
+        from starlette.applications import Starlette
+        from starlette.routing import Mount
 
         if is_port_in_use(port):
             logger.error("Port %d is already in use. Cannot start HTTP server.", port)
             return
 
-        app = mcp.streamable_http_app()
+        mcp_app = mcp.streamable_http_app()
+
+        @asynccontextmanager
+        async def lifespan(app):  # type: ignore[type-arg]
+            evo_task = asyncio.create_task(_evolution_scheduler())
+            try:
+                yield
+            finally:
+                evo_task.cancel()
+                try:
+                    await evo_task
+                except asyncio.CancelledError:
+                    pass
+
+        app = Starlette(lifespan=lifespan, routes=[Mount("/", app=mcp_app)])
         uvicorn.run(app, host="0.0.0.0", port=port, log_level="error")
 
     try:

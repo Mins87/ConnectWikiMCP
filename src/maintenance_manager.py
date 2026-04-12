@@ -28,11 +28,28 @@ class MaintenanceManager:
             page_name = (metadata or {}).get("name") or (metadata or {}).get("target_page_name")
             if page_name:
                 self._schedule_enrichment(page_name)
+                self._schedule_embedding(page_name)
 
     def _schedule_enrichment(self, page_name: str) -> None:
         task = asyncio.create_task(self._enrich_page_with_ai(page_name))
         self._active_tasks.add(task)
         task.add_done_callback(lambda done: self._active_tasks.discard(done))
+
+    def _schedule_embedding(self, page_name: str) -> None:
+        task = asyncio.create_task(self._embed_page(page_name))
+        self._active_tasks.add(task)
+        task.add_done_callback(lambda done: self._active_tasks.discard(done))
+
+    async def _embed_page(self, page_name: str) -> None:
+        try:
+            from embedding_manager import embedding_manager
+
+            page = self.wiki.read_page(page_name)
+            if not page:
+                return
+            await embedding_manager.index_page(page_name, page.content)
+        except Exception:
+            logger.exception("Embedding indexing failed for '%s'", page_name)
 
     async def _enrich_page_with_ai(self, page_name: str) -> None:
         try:
@@ -116,6 +133,62 @@ class MaintenanceManager:
                 self.wiki.write_page(page_name, doc_file.read_text(encoding="utf-8"))
                 synced += 1
         return synced
+
+    async def run_evolution_cycle(self) -> str:
+        """Analyze intent logs and auto-update System/Intelligence.md.
+        
+        Returns a summary of what was updated, or a reason why it was skipped.
+        """
+        from llm_client import llm_client
+
+        logs = self.wiki.read_intent_logs(200)
+        if not logs:
+            return "No logs to analyze."
+
+        intelligence_page = self.wiki.read_page("System/Intelligence")
+        current_docs = intelligence_page.content if intelligence_page else "(empty)"
+
+        log_summary = "\n".join(
+            f"[{e['timestamp']}] {e['tool']} → {e['outcome']}"
+            for e in logs[-100:]
+        )
+
+        prompt = f"""You are a System Growth Analyst for a personal knowledge management wiki.
+Analyze the recent usage logs and identify actionable insights to improve the system's intelligence guidelines.
+
+CURRENT INTELLIGENCE DOCS:
+{current_docs[:2000]}
+
+RECENT USAGE LOGS (last 100 events):
+{log_summary}
+
+Instructions:
+1. Identify the top 3-5 patterns (frequently used tools, common topics, failure modes).
+2. Suggest concrete improvements or rules to add to the intelligence document.
+3. Return ONLY a Markdown section titled '## 🤖 Auto-Evolution Insights (YYYY-MM-DD)' with your findings.
+Do NOT rewrite the full document. Output only the new section to append."""
+
+        try:
+            new_section = await llm_client.complete_text(
+                prompt,
+                system_prompt="You are a concise system analyst. Output only valid Markdown.",
+            )
+        except Exception as exc:
+            logger.error("Evolution cycle LLM call failed: %s", exc)
+            return f"LLM unavailable: {exc}"
+
+        timestamp = datetime.now().strftime("%Y-%m-%d")
+        new_section = new_section.strip().replace(
+            "YYYY-MM-DD", timestamp
+        )
+
+        updated = (current_docs.rstrip() + "\n\n" + new_section + "\n") if current_docs else new_section
+        self.wiki.write_page("System/Intelligence", updated)
+
+        # Log the evolution event
+        self.wiki.log_intent("Auto evolution cycle", "EvolutionCycle", "Success", {"logs_analyzed": len(logs)})
+        logger.info("Evolution cycle completed: updated System/Intelligence.md")
+        return f"Evolution complete: analyzed {len(logs)} events and appended new insights."
 
 
 maintenance_manager = MaintenanceManager()

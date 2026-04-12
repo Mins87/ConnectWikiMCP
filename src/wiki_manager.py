@@ -108,6 +108,7 @@ class WikiManager:
         )
 
     def search_wiki(self, query: str) -> list[WikiPage]:
+        """Keyword-based search (synchronous fallback)."""
         needle = query.lower().strip()
         results: list[WikiPage] = []
         for name in self.list_pages():
@@ -115,6 +116,24 @@ class WikiManager:
             if page and (needle in page.name.lower() or needle in page.content.lower()):
                 results.append(page)
         return results
+
+    async def search_wiki_semantic(self, query: str, top_k: int = 10) -> list[WikiPage]:
+        """Hybrid semantic→keyword search.
+
+        Tries vector similarity search first. Falls back to keyword search
+        if the embedding index is empty or the LLM is unavailable.
+        """
+        from embedding_manager import embedding_manager
+
+        semantic_names = await embedding_manager.search(query, top_k=top_k)
+
+        if semantic_names:
+            results = [p for name in semantic_names if (p := self.read_page(name))]
+            if results:
+                return results
+
+        # Fallback: keyword search
+        return self.search_wiki(query)
 
     def extract_links(self, content: str) -> list[str]:
         return sorted({match.strip() for match in WIKILINK_RE.findall(content) if match.strip()})

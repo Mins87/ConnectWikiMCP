@@ -29,6 +29,8 @@ class Config(BaseModel):
     local_llm_api_url: str = "http://localhost:11434"
     local_llm_model: str = "gemma4-E4B-it"
     local_llm_api_key: Optional[str] = None
+    embedding_model: str = "nomic-embed-text"          # Ollama embedding model
+    evolution_interval_hours: int = 6                  # 0 = disabled
     mcp_port: int = 8000
     python_command: str = "python"
 
@@ -46,6 +48,8 @@ class ConfigManager:
             local_llm_api_url=os.getenv("LOCAL_LLM_API_URL", "http://localhost:11434"),
             local_llm_model=os.getenv("LOCAL_LLM_MODEL", "gemma4-E4B-it"),
             local_llm_api_key=os.getenv("LOCAL_LLM_API_KEY"),
+            embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
+            evolution_interval_hours=int(os.getenv("EVOLUTION_INTERVAL_HOURS", "6")),
             mcp_port=int(os.getenv("MCP_PORT", "8000")),
             python_command=os.getenv("PYTHON_COMMAND", "python"),
         )
