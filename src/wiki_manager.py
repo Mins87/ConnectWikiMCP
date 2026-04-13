@@ -292,8 +292,8 @@ class WikiManager:
             
         template = template_path.read_text(encoding="utf-8")
         
-        # Safe SSR injection
-        html = template.replace("{{json_data}}", json.dumps(data, ensure_ascii=False)) \
+        # Safe SSR injection - Matching user's fixed template format
+        html = template.replace("{json_data}", json.dumps(data, ensure_ascii=False)) \
                        .replace("{{node_count}}", str(len(data['nodes']))) \
                        .replace("{{link_count}}", str(len(data['links'])))
         
