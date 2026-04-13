@@ -9,10 +9,15 @@ ENV PYTHONPATH=/app/src
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (needed for some MarkItDown sub-dependencies like Magika)
+# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libmagic1 \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Download force-graph library for internal hosting
+RUN mkdir -p /app/static && \
+    curl -L -o /app/static/force-graph.min.js https://unpkg.com/force-graph/dist/force-graph.min.js
 
 # Copy requirements first for better caching
 COPY requirements.txt .

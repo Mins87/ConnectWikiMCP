@@ -23,6 +23,7 @@ class MaintenanceManager:
         drift = self._detect_spec_drift()
         self._update_logs_index()
         self._update_status_page(drift_detected=drift)
+        self._update_visualizer()
 
         if status == "Success" and tool_name in {"SaveWikiContent", "SynthesizeKnowledge"}:
             page_name = (metadata or {}).get("name") or (metadata or {}).get("target_page_name")
@@ -118,6 +119,16 @@ class MaintenanceManager:
         else:
             content = content.rstrip() + "\n\n" + block + "\n"
         self.wiki.write_page(page_name, content)
+    
+    def _update_visualizer(self) -> None:
+        """Automatically regenerate the interactive graph visualizer."""
+        try:
+            html = self.wiki.generate_graph_html()
+            output_path = self.wiki.root_dir / "visualizer.html"
+            output_path.write_text(html, encoding="utf-8")
+            logger.info("Knowledge graph visualizer auto-updated at %s", output_path)
+        except Exception:
+            logger.exception("Failed to auto-update knowledge graph visualizer")
 
     def bootstrap_system_docs(self, overwrite: bool = False) -> int:
         project_root = Path(__file__).parent.parent

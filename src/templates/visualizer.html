@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ConnectWiki Intelligence</title>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script src="/static/force-graph.min.js?v=2026.4.13.11"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-color: #03060a;
+            --accent-color: #58a6ff;
+            --panel-bg: rgba(13, 17, 23, 0.75);
+            --border-color: rgba(88, 166, 255, 0.2);
+            --text-main: #fff;
+            --text-dim: #8b949e;
+        }
+
+        body { 
+            margin: 0; 
+            background: var(--bg-color); 
+            color: var(--text-main); 
+            font-family: 'Inter', -apple-system, sans-serif;
+            overflow: hidden;
+        }
+
+        #graph { 
+            width: 100vw; 
+            height: 100vh; 
+            opacity: 0; 
+            transition: opacity 1.5s ease; 
+        }
+
+        .header {
+            position: absolute;
+            top: 25px;
+            left: 40px;
+            z-index: 100;
+            pointer-events: none;
+        }
+
+        h1 { 
+            margin: 0; 
+            font-size: 24px; 
+            font-weight: 600; 
+            color: var(--text-main); 
+            letter-spacing: -0.03em;
+            text-shadow: 0 0 20px rgba(88, 166, 255, 0.5); 
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            background: var(--panel-bg);
+            padding: 20px 25px;
+            border-radius: 20px;
+            border: 1px solid var(--border-color);
+            backdrop-filter: blur(15px);
+            z-index: 100;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.8);
+        }
+
+        .stats { font-size: 13px; color: var(--text-dim); margin-top: 6px; }
+
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 16px;
+            color: var(--accent-color);
+            background: rgba(3,6,10,0.95);
+            padding: 24px 48px;
+            border-radius: 60px;
+            border: 1px solid rgba(88, 166, 255, 0.3);
+            box-shadow: 0 0 50px rgba(88, 166, 255, 0.2);
+            transition: opacity 0.8s ease;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(88, 166, 255, 0.2);
+            border-top-color: var(--accent-color);
+            border-radius: 50%;
+            animation: spin 0.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="loading"><div class="spinner"></div> 신경망 동기화 중...</div>
+    <div class="header"><h1>ConnectWiki Intelligence</h1></div>
+    <div class="controls">
+        <div class="stats">신경 노드: <b>{{node_count}}</b> &nbsp;•&nbsp; 연결망: <b>{{link_count}}</b></div>
+    </div>
+    <div id="graph"></div>
+
+    <script>
+        const gData = {{json_data}};
+        const elem = document.getElementById('graph');
+        const loading = document.getElementById('loading');
+        
+        function revealGraph() {
+            if (loading.style.display !== 'none') {
+                loading.style.opacity = '0';
+                elem.style.opacity = '1';
+                setTimeout(() => loading.style.display = 'none', 800);
+            }
+        }
+
+        if (typeof ForceGraph === 'undefined') {
+            loading.innerHTML = '<span style="color:#ff7b72">오류: 시스템 정적 자원을 불러올 수 없습니다.</span>';
+        } else {
+            const Graph = ForceGraph()(elem)
+                .graphData(gData)
+                .nodeId('id')
+                .nodeAutoColorBy(node => node.id.split('/')[0])
+                .nodeCanvasObject((node, ctx, globalScale) => {
+                    const label = node.id.split('/').pop();
+                    const baseSize = 5 + (node.val * 0.8);
+                    const fontSize = 14 / globalScale;
+                    ctx.font = `${fontSize}px Inter`;
+                    
+                    // HUB nodes glow much brighter
+                    const glowIntensity = Math.min(30, 10 + (node.val * 4));
+                    ctx.shadowBlur = glowIntensity / globalScale;
+                    ctx.shadowColor = node.color;
+                    
+                    ctx.beginPath();
+                    ctx.arc(node.x, node.y, baseSize / globalScale, 0, 2 * Math.PI, false);
+                    ctx.fillStyle = node.color;
+                    ctx.fill();
+                    
+                    ctx.shadowBlur = 0;
+                    if (globalScale > 0.6) {
+                        ctx.textAlign = 'center';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillStyle = '#fff';
+                        ctx.fillText(label, node.x, node.y + (baseSize / globalScale) + fontSize * 1.2);
+                    }
+                })
+                .linkDirectionalParticles(2)
+                .linkDirectionalParticleWidth(2)
+                .linkCurvature(0.25)
+                .linkColor(() => 'rgba(255, 255, 255, 0.1)')
+                .backgroundColor('#03060a')
+                .onEngineTick(() => {
+                    revealGraph();
+                });
+
+            // Physics tuning - Slightly increased spacing (+20% repulsion)
+            Graph.d3Force('charge').strength(-150); // Increased from -120
+            Graph.d3Force('center').strength(0.7);
+            
+            // Subtle radial force relaxed to allow spreading
+            Graph.d3Force('radial', d3.forceRadial(0).strength(0.2));
+            
+            const collide = Graph.d3Force('collide');
+            if (collide && typeof collide.radius === 'function') {
+                collide.radius(node => (8 + node.val * 1.5) * 1.1);
+            }
+            
+            Graph.d3AlphaDecay(0.015);
+            Graph.d3VelocityDecay(0.4); // Standard friction
+
+            setTimeout(revealGraph, 1200);
+
+            window.addEventListener('resize', () => {
+                Graph.width(window.innerWidth).height(window.innerHeight);
+            });
+        }
+    </script>
+</body>
+</html>

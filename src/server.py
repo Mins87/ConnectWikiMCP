@@ -28,6 +28,7 @@ READ_ONLY_TOOLS = {
     "SearchAcrossWiki",
     "ExploreConnections",
     "AnalyzeKnowledgeGraph",
+    "RenderKnowledgeGraph",
     "EvolutionAudit",
     "AccessOriginalSource",
     "OrganizeByTag",
@@ -300,6 +301,17 @@ async def ConfigureSettings(
 
 @mcp.tool()
 @autonomous_action
+async def RenderKnowledgeGraph() -> str:
+    """Generate an interactive HTML visualization of the wiki knowledge graph.
+    The visualizer will be hosted at http://localhost:{port}/visualizer"""
+    from config import config_manager
+    port = config_manager.get_config().mcp_port
+    
+    return f"Knowledge graph is ready! View it at: http://localhost:{port}/visualizer"
+
+
+@mcp.tool()
+@autonomous_action
 async def ResetSystemDocs() -> str:
     from maintenance_manager import maintenance_manager
 
@@ -369,7 +381,9 @@ def main() -> None:
         import uvicorn
         from contextlib import asynccontextmanager
         from starlette.applications import Starlette
-        from starlette.routing import Mount
+        from starlette.routing import Mount, Route
+        from starlette.responses import HTMLResponse
+        from starlette.staticfiles import StaticFiles
 
         if is_port_in_use(port):
             logger.error("Port %d is already in use. Cannot start HTTP server.", port)
@@ -377,19 +391,32 @@ def main() -> None:
 
         mcp_app = mcp.streamable_http_app()
 
+        async def serve_visualizer(request):
+            from wiki_manager import wiki_manager
+            html = wiki_manager.generate_graph_html()
+            return HTMLResponse(content=html)
+
         @asynccontextmanager
         async def lifespan(app):  # type: ignore[type-arg]
-            evo_task = asyncio.create_task(_evolution_scheduler())
-            try:
-                yield
-            finally:
-                evo_task.cancel()
+            async with mcp.session_manager.run():
+                evo_task = asyncio.create_task(_evolution_scheduler())
                 try:
-                    await evo_task
-                except asyncio.CancelledError:
-                    pass
+                    yield
+                finally:
+                    evo_task.cancel()
+                    try:
+                        await evo_task
+                    except asyncio.CancelledError:
+                        pass
 
-        app = Starlette(lifespan=lifespan, routes=[Mount("/", app=mcp_app)])
+        app = Starlette(
+            lifespan=lifespan, 
+            routes=[
+                Route("/visualizer", endpoint=serve_visualizer),
+                Mount("/static", app=StaticFiles(directory="/app/static")),
+                Mount("/", app=mcp_app)
+            ]
+        )
         uvicorn.run(app, host="0.0.0.0", port=port, log_level="error")
 
     try:

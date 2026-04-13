@@ -39,6 +39,7 @@ This **v1.1.0 (Karpathy Edition)** fully realizes Andrej Karpathy's LLM Wiki vis
 | `RebuildSearchIndex` | Force-rebuilds the vector embedding index after bulk imports |
 | `ExploreConnections` | Finds all pages linking to a given page |
 | `AnalyzeKnowledgeGraph` | Returns graph data (nodes & edges) |
+| `RenderKnowledgeGraph` | Generates an interactive HTML node-map visualization |
 | `CaptureQuickNote` | Ingests a raw note for later synthesis |
 | `CaptureFromURL` | Captures web page or **YouTube transcript** into raw folder |
 | `SyncDocuments` | Converts pending raw files (PDF, Word, etc.) to wiki pages |
@@ -138,6 +139,7 @@ ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowled
 | `RebuildSearchIndex` | 벡터 임베딩 인덱스 전체 재구축 |
 | `ExploreConnections` | 특정 페이지로 연결되는 모든 페이지 탐색 |
 | `AnalyzeKnowledgeGraph` | 그래프 데이터(노드 및 엣지) 반환 |
+| `RenderKnowledgeGraph` | 인터랙티브 HTML 노드 맵 시각화 생성 |
 | `CaptureQuickNote` | 나중에 합성할 원본 메모 입력 |
 | `CaptureFromURL` | 웹 페이지 또는 **유튜브 자막**을 raw 폴더로 수집 |
 | `SyncDocuments` | 대기 중인 원본 파일(PDF, Word 등)을 위키 페이지로 변환 |

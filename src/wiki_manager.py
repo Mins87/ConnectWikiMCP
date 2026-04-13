@@ -153,16 +153,23 @@ class WikiManager:
 
     def get_graph_data(self) -> dict[str, Any]:
         pages = set(self.list_pages())
-        nodes = [{"id": name, "type": "page"} for name in sorted(pages)]
-        edges = []
+        links = []
         for name in sorted(pages):
             page = self.read_page(name)
             if not page:
                 continue
             for link in self.extract_links(page.content):
                 if link in pages:
-                    edges.append({"source": name, "target": link})
-        return {"nodes": nodes, "edges": edges}
+                    links.append({"source": name, "target": link})
+        
+        # Calculate degree for each node to determine visual prominence
+        node_val = {name: 1 for name in pages}
+        for link in links:
+            node_val[link["source"]] += 1
+            node_val[link["target"]] += 1
+            
+        nodes = [{"id": name, "type": "page", "val": node_val[name]} for name in sorted(pages)]
+        return {"nodes": nodes, "links": links}
 
     def get_tagged_raw_files(self, tag: str) -> list[str]:
         target = f"#{tag}"
@@ -273,6 +280,24 @@ class WikiManager:
             for path in self.raw_dir.rglob("*")
             if path.is_file()
         )
+
+
+    def generate_graph_html(self) -> str:
+        """Dynamically generate a premium interactive HTML for the knowledge graph (SSR)."""
+        data = self.get_graph_data()
+        
+        template_path = Path(__file__).parent / "templates" / "visualizer.html"
+        if not template_path.exists():
+            return "<html><body><h1>Template Not Found</h1></body></html>"
+            
+        template = template_path.read_text(encoding="utf-8")
+        
+        # Safe SSR injection
+        html = template.replace("{{json_data}}", json.dumps(data, ensure_ascii=False)) \
+                       .replace("{{node_count}}", str(len(data['nodes']))) \
+                       .replace("{{link_count}}", str(len(data['links'])))
+        
+        return html
 
 
 wiki_manager = WikiManager()
