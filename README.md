@@ -22,6 +22,7 @@ This **v1.1.0 (Karpathy Edition)** fully realizes Andrej Karpathy's LLM Wiki vis
 - **Hierarchical Knowledge Structure**: `Category/Sub-Category/Page` system for large-scale knowledge management.
 - **Automatic Document Sync**: Converts PDF, Word, etc. into AI-optimized Markdown via `MarkItDown`.
 - **Background AI Enrichment**: Auto-adds tags and `[[WikiLinks]]` after every page save without blocking.
+- **Premium Graph Visualizer (SSR)**: Real-time interactive knowledge map via `/visualizer` endpoint. HUB nodes glow dynamically based on connectivity, and orphans are managed by self-organizing physics.
 - **Safe Bootstrap & Reset**: `ResetSystemDocs` force-syncs official system documentation into the wiki.
 
 ### 📁 Documentation
@@ -38,8 +39,8 @@ This **v1.1.0 (Karpathy Edition)** fully realizes Andrej Karpathy's LLM Wiki vis
 | `SearchAcrossWiki` | **Semantic** search (vector similarity → keyword fallback) |
 | `RebuildSearchIndex` | Force-rebuilds the vector embedding index after bulk imports |
 | `ExploreConnections` | Finds all pages linking to a given page |
-| `AnalyzeKnowledgeGraph` | Returns graph data (nodes & edges) |
-| `RenderKnowledgeGraph` | Generates an interactive HTML node-map visualization |
+| `AnalyzeKnowledgeGraph` | Returns graph data (nodes & links) |
+| `RenderKnowledgeGraph` | Opens/returns the URL for the **real-time SSR visualizer** |
 | `CaptureQuickNote` | Ingests a raw note for later synthesis |
 | `CaptureFromURL` | Captures web page or **YouTube transcript** into raw folder |
 | `SyncDocuments` | Converts pending raw files (PDF, Word, etc.) to wiki pages |
@@ -122,6 +123,7 @@ ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowled
 - **계층형 지식 구조**: `분류/중분류/페이지` 체계로 대규모 지식을 관리합니다.
 - **자동 문서 동기화**: PDF, Word 등을 MarkItDown으로 Markdown 변환합니다.
 - **백그라운드 AI 지능 보강**: 저장되는 모든 페이지에 태그와 `[[WikiLinks]]`를 자동 추가합니다.
+- **프리미엄 그래프 시각화 (SSR)**: `/visualizer` 엔드포인트를 통한 실시간 인터랙티브 지식 맵을 제공합니다. 연결망이 많은 노드는 더 밝게 빛나며, 독립 노드들은 자율 물리 엔진에 의해 중심으로 정렬됩니다.
 - **안전 부트스트랩 및 초기화**: `ResetSystemDocs`로 공식 시스템 문서를 언제든 강제 동기화할 수 있습니다.
 
 ### 📁 핵심 문서
@@ -138,8 +140,8 @@ ConnectWikiMCP는 파편화된 정보를 체계적인 **지식 그래프(Knowled
 | `SearchAcrossWiki` | **시맨틱 검색** (벡터 유사도 → 키워드 자동 폴백) |
 | `RebuildSearchIndex` | 벡터 임베딩 인덱스 전체 재구축 |
 | `ExploreConnections` | 특정 페이지로 연결되는 모든 페이지 탐색 |
-| `AnalyzeKnowledgeGraph` | 그래프 데이터(노드 및 엣지) 반환 |
-| `RenderKnowledgeGraph` | 인터랙티브 HTML 노드 맵 시각화 생성 |
+| `AnalyzeKnowledgeGraph` | 그래프 데이터(노드 및 링크) 반환 |
+| `RenderKnowledgeGraph` | **실시간 SSR 시각화** 페이지 URL 반환 및 접속 안내 |
 | `CaptureQuickNote` | 나중에 합성할 원본 메모 입력 |
 | `CaptureFromURL` | 웹 페이지 또는 **유튜브 자막**을 raw 폴더로 수집 |
 | `SyncDocuments` | 대기 중인 원본 파일(PDF, Word 등)을 위키 페이지로 변환 |
