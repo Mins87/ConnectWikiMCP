@@ -34,6 +34,8 @@ class Config(BaseModel):
     evolution_interval_hours: int = 6                  # 0 = disabled
     mcp_port: int = 8000
     python_command: str = "python"
+    brain_watch_path: str = ""                          # Antigravity brain dir; empty = disabled
+    conversation_watch_interval_minutes: int = 30      # 0 = disabled
 
 
 class ConfigManager:
@@ -56,6 +58,8 @@ class ConfigManager:
             evolution_interval_hours=int(os.getenv("EVOLUTION_INTERVAL_HOURS", "6")),
             mcp_port=int(os.getenv("MCP_PORT", "8000")),
             python_command=os.getenv("PYTHON_COMMAND", "python"),
+            brain_watch_path=os.getenv("BRAIN_WATCH_PATH", ""),
+            conversation_watch_interval_minutes=int(os.getenv("CONVERSATION_WATCH_INTERVAL", "30")),
         )
 
     def initialize(self) -> None:

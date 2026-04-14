@@ -598,6 +598,40 @@ async def CaptureSessionSummary(
     return f"Session summary saved to '{page_name}'"
 
 
+@mcp.tool()
+@autonomous_action
+async def IngestConversations() -> str:
+    """Scan the Antigravity brain directory for new conversation logs and
+    auto-ingest them into the wiki as structured knowledge pages.
+
+    Each conversation is distilled by the local LLM into a compact wiki page
+    under ``Conversations/YYYY-MM-DD/TopicSlug``. Already-processed
+    conversations are skipped automatically.
+    """
+    from conversation_watcher import conversation_watcher
+
+    return await conversation_watcher.run_watch_cycle()
+
+
+@mcp.tool()
+@autonomous_action
+async def WatcherStatus() -> str:
+    """Return the current status of the conversation auto-capture watcher,
+    including the number of processed and pending conversations.
+    """
+    from conversation_watcher import conversation_watcher
+
+    status = conversation_watcher.get_status()
+    lines = [
+        "## Conversation Watcher Status",
+        f"- **Enabled**: {status['enabled']}",
+        f"- **Brain Path**: {status['brain_path']}",
+        f"- **Processed**: {status['processed_count']} conversations",
+        f"- **Pending**: {status['pending_count']} conversations",
+    ]
+    return "\n".join(lines)
+
+
 @mcp.prompt()
 def AutomatedCompilation(keyword: str) -> str:
     return f"""
@@ -692,6 +726,29 @@ def main() -> None:
                 logger.exception("Evolution cycle failed")
             await asyncio.sleep(interval_hours * 3600)
 
+    async def _conversation_watcher_scheduler() -> None:
+        """Background task: periodically scan brain directory for new conversations."""
+        interval_min = cfg.conversation_watch_interval_minutes
+        brain_path = cfg.brain_watch_path.strip()
+        if interval_min <= 0 or not brain_path:
+            logger.info("Conversation watcher disabled (no BRAIN_WATCH_PATH or interval=0).")
+            return
+        logger.info(
+            "Conversation watcher started: scanning '%s' every %d min.",
+            brain_path, interval_min,
+        )
+        # Initial delay of 2 minutes to let the server fully initialize
+        await asyncio.sleep(120)
+        while True:
+            try:
+                from conversation_watcher import conversation_watcher
+                summary = await conversation_watcher.run_watch_cycle()
+                if "No new" not in summary:
+                    logger.info("Conversation watcher: %s", summary)
+            except Exception:
+                logger.exception("Conversation watcher cycle failed")
+            await asyncio.sleep(interval_min * 60)
+
     def run_http() -> None:
         import uvicorn
         from contextlib import asynccontextmanager
@@ -715,14 +772,17 @@ def main() -> None:
         async def lifespan(app):  # type: ignore[type-arg]
             async with mcp.session_manager.run():
                 evo_task = asyncio.create_task(_evolution_scheduler())
+                watch_task = asyncio.create_task(_conversation_watcher_scheduler())
                 try:
                     yield
                 finally:
                     evo_task.cancel()
-                    try:
-                        await evo_task
-                    except asyncio.CancelledError:
-                        pass
+                    watch_task.cancel()
+                    for t in (evo_task, watch_task):
+                        try:
+                            await t
+                        except asyncio.CancelledError:
+                            pass
 
         app = Starlette(
             lifespan=lifespan, 

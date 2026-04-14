@@ -245,6 +245,15 @@ Do NOT rewrite the full document. Output only the new section to append."""
         except Exception:
             logger.exception("Knowledge briefing generation failed")
 
+        # Auto-ingest new conversations from Antigravity brain
+        try:
+            from conversation_watcher import conversation_watcher
+
+            watch_result = await conversation_watcher.run_watch_cycle()
+            logger.info("Conversation watch: %s", watch_result)
+        except Exception:
+            logger.exception("Conversation watch cycle failed")
+
         return f"Evolution complete: analyzed {len(logs)} events and appended new insights."
 
     async def generate_knowledge_briefing(self) -> str:

@@ -7,6 +7,7 @@ services:
       - "${MCP_PORT:-8000}:${MCP_PORT:-8000}"
     volumes:
       - "${WIKI_ROOT_PATH:-./wiki}:/app/wiki"
+      - "${BRAIN_WATCH_PATH:-./brain}:/app/brain:ro"
     environment:
       - WIKI_ROOT_PATH=/app/wiki
       - LOCAL_LLM_TYPE=${LOCAL_LLM_TYPE:-ollama}
@@ -17,5 +18,7 @@ services:
       - EVOLUTION_INTERVAL_HOURS=${EVOLUTION_INTERVAL_HOURS:-6}
       - MCP_TRANSPORT=${MCP_TRANSPORT:-stdio}
       - MCP_PORT=${MCP_PORT:-8000}
+      - BRAIN_WATCH_PATH=/app/brain
+      - CONVERSATION_WATCH_INTERVAL=${CONVERSATION_WATCH_INTERVAL:-30}
     extra_hosts:
       - "host.docker.internal:host-gateway"
