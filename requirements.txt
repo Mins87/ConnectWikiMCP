@@ -1,6 +1,6 @@
 mcp[sse]
 httpx
-markitdown
+markitdown[pdf,docx,pptx,xlsx]
 pydantic-settings
 trafilatura
 youtube-transcript-api
