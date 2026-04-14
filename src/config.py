@@ -92,7 +92,7 @@ class ConfigManager:
     def _ensure_layout(self, root_path: Path) -> None:
         """Create the necessary directory structure if it does not exist."""
         root_path.mkdir(parents=True, exist_ok=True)
-        for name in ("pages", "raw", "transformed", "logs", "digests"):
+        for name in ("pages", "raw", "transformed", "logs"):
             (root_path / name).mkdir(parents=True, exist_ok=True)
         # Raw 3-source input architecture
         for sub in ("files", "memos", "conversations"):
