@@ -341,12 +341,32 @@ class WikiManager:
         return source_path.stat().st_mtime > target_path.stat().st_mtime
 
     def convert_file_to_md(self, source_path: Path, target_path: Path) -> None:
-        """Use MarkItDown to convert any file format into a markdown equivalent."""
+        """Use MarkItDown with local LLM integration to convert any file format into a markdown equivalent.
+        
+        This version ensures high-fidelity extraction of tables and images by using
+        the local LLM for visual and structural analysis.
+        """
         target_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             if self._mid is None:
                 from markitdown import MarkItDown
-                self._mid = MarkItDown()
+                from openai import OpenAI
+                
+                cfg = config_manager.get_config()
+                
+                # Setup OpenAI-compatible client for local Ollama
+                # Note: Ollama provides OpenAI compatibility at /v1
+                llm_client = OpenAI(
+                    base_url=f"{cfg.local_llm_api_url.rstrip('/')}/v1",
+                    api_key="ollama",  # Placeholder for local usage
+                )
+                
+                self._mid = MarkItDown(
+                    llm_client=llm_client,
+                    llm_model=cfg.local_llm_model,
+                    enable_plugins=True  # Enables OCR and high-fidelity extraction
+                )
+            
             result = self._mid.convert(str(source_path.absolute()))
             target_path.write_text(result.text_content, encoding="utf-8")
         except Exception as exc:
