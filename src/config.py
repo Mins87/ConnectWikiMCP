@@ -31,7 +31,6 @@ class Config(BaseModel):
     local_llm_model: str = "gemma4-E4B-it"
     local_llm_api_key: Optional[str] = None
     embedding_model: str = "nomic-embed-text"          # Ollama embedding model
-    evolution_interval_hours: int = 6                  # 0 = disabled
     mcp_port: int = 8000
     python_command: str = "python"
     brain_watch_path: str = ""                          # Antigravity brain dir; empty = disabled
@@ -55,7 +54,6 @@ class ConfigManager:
             local_llm_model=os.getenv("LOCAL_LLM_MODEL", "gemma4-E4B-it"),
             local_llm_api_key=os.getenv("LOCAL_LLM_API_KEY"),
             embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
-            evolution_interval_hours=int(os.getenv("EVOLUTION_INTERVAL_HOURS", "6")),
             mcp_port=int(os.getenv("MCP_PORT", "8000")),
             python_command=os.getenv("PYTHON_COMMAND", "python"),
             brain_watch_path=os.getenv("BRAIN_WATCH_PATH", ""),
@@ -96,6 +94,9 @@ class ConfigManager:
         root_path.mkdir(parents=True, exist_ok=True)
         for name in ("pages", "raw", "transformed", "logs", "digests"):
             (root_path / name).mkdir(parents=True, exist_ok=True)
+        # Raw 3-source input architecture
+        for sub in ("files", "memos", "conversations"):
+            (root_path / "raw" / sub).mkdir(parents=True, exist_ok=True)
 
     def _config_file_for(self, wiki_root_path: str | Path) -> Path:
         return Path(wiki_root_path) / "config.json"

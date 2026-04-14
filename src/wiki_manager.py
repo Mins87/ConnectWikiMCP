@@ -45,6 +45,21 @@ class WikiManager:
         return self.root_dir / "raw"
 
     @property
+    def raw_files_dir(self) -> Path:
+        """Raw files: PDFs, URL captures, uploaded documents."""
+        return self.raw_dir / "files"
+
+    @property
+    def raw_memos_dir(self) -> Path:
+        """Raw memos: AI agent notes and quick captures."""
+        return self.raw_dir / "memos"
+
+    @property
+    def raw_conversations_dir(self) -> Path:
+        """Raw conversations: chat history backups."""
+        return self.raw_dir / "conversations"
+
+    @property
     def transformed_dir(self) -> Path:
         """Directory for markdown versions of non-md raw files."""
         return self.root_dir / "transformed"
@@ -349,6 +364,51 @@ class WikiManager:
                        .replace("{{link_count}}", str(len(data['links'])))
         
         return html
+
+    def rebuild_index(self) -> str:
+        """Regenerate the master index.md from all existing wiki pages.
+
+        The index is a hierarchical TOC that AI agents read first to
+        navigate the knowledge base without costly search operations.
+        """
+        pages = self.list_pages()
+        if not pages:
+            content = "# 📚 Knowledge Index\n\n> No pages yet.\n"
+            self.write_page("index", content)
+            return content
+
+        # Build a tree from page paths
+        tree: dict = {}
+        for page in pages:
+            if page == "index":
+                continue
+            parts = page.split("/")
+            node = tree
+            for part in parts:
+                node = node.setdefault(part, {})
+
+        def _render(node: dict, depth: int = 0, prefix: str = "") -> list[str]:
+            lines: list[str] = []
+            for key in sorted(node.keys()):
+                full_path = f"{prefix}/{key}" if prefix else key
+                indent = "  " * depth
+                if node[key]:  # has children → category
+                    lines.append(f"{indent}- **{key}/**")
+                    lines.extend(_render(node[key], depth + 1, full_path))
+                else:  # leaf → wiki page link
+                    lines.append(f"{indent}- [[{full_path}|{key}]]")
+            return lines
+
+        body = _render(tree)
+        content = (
+            "# 📚 Knowledge Index\n\n"
+            f"> {len(pages)} pages | "
+            f"Updated: {datetime.now().strftime('%Y-%m-%d %H:%M')}\n\n"
+            + "\n".join(body)
+            + "\n"
+        )
+        self.write_page("index", content)
+        return content
 
 
 wiki_manager = WikiManager()
