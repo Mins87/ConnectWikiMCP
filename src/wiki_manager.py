@@ -208,25 +208,62 @@ class WikiManager:
         return backlinks
 
     def get_graph_data(self) -> dict[str, Any]:
-        """Generate a structured graph of all pages and their internal links."""
+        """Generate a structured graph including virtual folder centroids and page links."""
         pages = set(self.list_pages())
-        links = []
+        nodes_dict: dict[str, dict] = {}
+        links: list[dict] = []
+        
+        # 1. Prepare Page Nodes
+        for name in sorted(pages):
+            nodes_dict[name] = {"id": name, "type": "page", "val": 1}
+            
+        # 2. Extract Folder Hierarchy and add Folder Nodes (Skip top-level root folders)
+        folders = set()
+        for name in pages:
+            parts = name.split("/")
+            # Accumulate parent directory paths starting from depth 2
+            # This skips root classification folders like 'Project/', 'Memo/', etc.
+            for i in range(2, len(parts)):
+                folder_path = "/".join(parts[:i]) + "/"
+                folders.add(folder_path)
+        
+        for folder in sorted(folders):
+            nodes_dict[folder] = {"id": folder, "type": "folder", "val": 2}
+            
+        # 3. Add Structural Hierarchy Links
+        for name in nodes_dict:
+            if "/" not in name or name == "/":
+                continue
+            
+            parts = name.rstrip("/").split("/")
+            # Only build hierarchy links if we are deeper than root level
+            if len(parts) > 2:
+                parent_path = "/".join(parts[:-1]) + "/"
+                if parent_path in nodes_dict:
+                    links.append({"source": name, "target": parent_path, "type": "hierarchical"})
+            elif not name.endswith("/") and len(parts) > 1:
+                # This is a page in a subfolder (e.g., A/B/Page)
+                parent_path = "/".join(parts[:-1]) + "/"
+                if parent_path in nodes_dict:
+                    links.append({"source": name, "target": parent_path, "type": "hierarchical"})
+
+        # 4. Add Cross-Reference wiki links (Page -> Page)
         for name in sorted(pages):
             page = self.read_page(name)
             if not page:
                 continue
             for link in self.extract_links(page.content):
                 if link in pages:
-                    links.append({"source": name, "target": link})
+                    links.append({"source": name, "target": link, "type": "wiki"})
         
-        # Calculate degree for each node to determine visual prominence
-        node_val = {name: 1 for name in pages}
+        # 5. Finalize node values based on total connectivity
         for link in links:
-            node_val[link["source"]] += 1
-            node_val[link["target"]] += 1
+            if link["source"] in nodes_dict:
+                nodes_dict[link["source"]]["val"] += 1
+            if link["target"] in nodes_dict:
+                nodes_dict[link["target"]]["val"] += 1
             
-        nodes = [{"id": name, "type": "page", "val": node_val[name]} for name in sorted(pages)]
-        return {"nodes": nodes, "links": links}
+        return {"nodes": list(nodes_dict.values()), "links": links}
 
     def get_tagged_raw_files(self, tag: str) -> list[str]:
         """Retrieve all raw source files that contain a specific #tag."""

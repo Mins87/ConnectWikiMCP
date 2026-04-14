@@ -97,7 +97,7 @@
 </head>
 <body>
     <div id="loading"><div class="spinner"></div> 신경망 동기화 중...</div>
-    <div class="header"><h1>ConnectWiki Intelligence</h1></div>
+    <div class="header"><h1>ConnectWiki Intelligence <small style="font-size: 12px; vertical-align: middle; opacity: 0.5;">v2.0.1</small></h1></div>
     <div class="controls">
         <div class="stats">신경 노드: <b>{{node_count}}</b> &nbsp;•&nbsp; 연결망: <b>{{link_count}}</b></div>
     </div>
@@ -124,52 +124,100 @@
                 .nodeId('id')
                 .nodeAutoColorBy(node => node.id.split('/')[0])
                 .nodeCanvasObject((node, ctx, globalScale) => {
-                    const label = node.id.split('/').pop();
-                    const baseSize = 5 + (node.val * 0.8);
-                    const fontSize = 14 / globalScale;
-                    ctx.font = `${fontSize}px Inter`;
+                    const isFolder = node.type === 'folder';
                     
-                    // HUB nodes glow much brighter
-                    const glowIntensity = Math.min(30, 10 + (node.val * 4));
-                    ctx.shadowBlur = glowIntensity / globalScale;
-                    ctx.shadowColor = node.color;
+                    // Clean label: get last part of path, remove trailing slash, replace _ with space
+                    const parts = node.id.split('/').filter(p => p.length > 0);
+                    const rawLabel = (parts[parts.length - 1] || node.id).replace(/_/g, ' ');
+                    const label = isFolder ? rawLabel.toUpperCase() : rawLabel;
                     
-                    ctx.beginPath();
-                    ctx.arc(node.x, node.y, baseSize / globalScale, 0, 2 * Math.PI, false);
-                    ctx.fillStyle = node.color;
-                    ctx.fill();
+                    // Folder nodes are bigger anchors (6px-12px range)
+                    // Page nodes are tiny refined points (3px-6px range)
+                    const baseSize = isFolder 
+                        ? (6 + Math.min(6, (node.val - 2) * 0.2))
+                        : (3 + Math.min(3, (node.val - 1) * 0.1));
+                        
+                    const fontSize = (isFolder ? 14 : 12) / globalScale;
+                    ctx.font = `${isFolder ? 'bold' : 'normal'} ${fontSize}px Inter`;
+                    
+                    // Style Folder vs Page
+                    if (isFolder) {
+                        // Soft glowing aura for folders - base glow + connectivity
+                        const glowIntensity = 10 + Math.min(25, node.val * 1.5);
+                        ctx.shadowBlur = glowIntensity / globalScale;
+                        ctx.shadowColor = node.color;
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, baseSize, 0, 2 * Math.PI, false);
+                        ctx.fillStyle = node.color;
+                        ctx.globalAlpha = 0.85;
+                        ctx.fill();
+                        ctx.globalAlpha = 1.0;
+                    } else {
+                        // Sharp point for pages - glow only for connected ones
+                        const glowIntensity = node.val > 2 ? Math.min(20, node.val * 2) : 0;
+                        ctx.shadowBlur = glowIntensity / globalScale;
+                        ctx.shadowColor = node.color;
+                        ctx.beginPath();
+                        ctx.arc(node.x, node.y, baseSize, 0, 2 * Math.PI, false);
+                        ctx.fillStyle = node.color;
+                        ctx.fill();
+                    }
                     
                     ctx.shadowBlur = 0;
-                    if (globalScale > 0.6) {
+                    // Labels: Folders always show if not too zoomed out, Pages only when close
+                    const showLabel = isFolder ? (globalScale > 0.3) : (globalScale > 1.2);
+                    if (showLabel) {
                         ctx.textAlign = 'center';
                         ctx.textBaseline = 'middle';
-                        ctx.fillStyle = '#fff';
-                        ctx.fillText(label, node.x, node.y + (baseSize / globalScale) + fontSize * 1.2);
+                        ctx.fillStyle = isFolder ? node.color : '#fff';
+                        if (isFolder) {
+                            // Folders have a background for legibility
+                            const textWidth = ctx.measureText(label).width;
+                            ctx.fillStyle = 'rgba(3,6,10,0.8)';
+                            ctx.fillRect(node.x - textWidth/2 - 2, node.y + baseSize + 2, textWidth + 4, fontSize + 2);
+                            ctx.fillStyle = node.color;
+                        } else {
+                            ctx.fillStyle = '#fff';
+                        }
+                        ctx.fillText(label, node.x, node.y + baseSize + (fontSize * 1.5));
                     }
                 })
-                .linkDirectionalParticles(2)
-                .linkDirectionalParticleWidth(2)
-                .linkCurvature(0.25)
-                .linkColor(() => 'rgba(255, 255, 255, 0.1)')
+                .linkDirectionalParticles(link => link.type === 'wiki' ? 3 : 2)
+                .linkDirectionalParticleWidth(1.5)
+                .linkDirectionalParticleSpeed(link => link.type === 'hierarchical' ? 0.005 : 0.01)
+                .linkDirectionalArrowLength(4)
+                .linkDirectionalArrowRelPos(1) // Arrows at the end of the link
+                .linkCurvature(0.2)
+                .linkWidth(link => link.type === 'hierarchical' ? 1.5 : 0.5)
+                .linkColor(link => link.type === 'hierarchical' ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.08)')
                 .backgroundColor('#03060a')
+                .onNodeDragEnd(node => {
+                  // Pin node at its dropped position
+                  node.fx = node.x;
+                  node.fy = node.y;
+                })
+                .onNodeClick(node => {
+                  // Release pinned node on click
+                  node.fx = null;
+                  node.fy = null;
+                })
                 .onEngineTick(() => {
                     revealGraph();
                 });
 
-            // Physics tuning - Slightly increased spacing (+20% repulsion)
-            Graph.d3Force('charge').strength(-150); // Increased from -120
-            Graph.d3Force('center').strength(0.7);
-            
-            // Subtle radial force relaxed to allow spreading
-            Graph.d3Force('radial', d3.forceRadial(0).strength(0.2));
+            // Physics tuning - Balanced: Floaty but anchored to center
+            Graph.d3Force('link').distance(link => link.type === 'hierarchical' ? 50 : 120);
+            Graph.d3Force('charge').strength(-150);
+            Graph.d3Force('center').strength(0.15); // Restored anchored center
+            Graph.d3Force('radial', d3.forceRadial(0).strength(0.05)); // Gentle radial pull
             
             const collide = Graph.d3Force('collide');
             if (collide && typeof collide.radius === 'function') {
-                collide.radius(node => (8 + node.val * 1.5) * 1.1);
+                collide.radius(node => Math.min(12, (6 + node.val * 0.4)) * 1.1);
             }
             
-            Graph.d3AlphaDecay(0.015);
-            Graph.d3VelocityDecay(0.4); // Standard friction
+            Graph.d3AlphaDecay(0.01); // Standard settling speed
+            Graph.d3VelocityDecay(0.2); // Balanced friction
 
             setTimeout(revealGraph, 1200);
 
