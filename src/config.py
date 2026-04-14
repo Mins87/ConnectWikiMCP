@@ -22,6 +22,7 @@ LocalLlmType = Literal["ollama", "llamacpp", "external"]
 
 
 class Config(BaseModel):
+    """Pydantic model for system-wide configuration settings."""
     model_config = ConfigDict(populate_by_name=True, extra="ignore")
 
     wiki_root_path: str = Field(default=str(Path.cwd() / "wiki"), alias="wikiRootPath")
@@ -36,11 +37,14 @@ class Config(BaseModel):
 
 
 class ConfigManager:
+    """Manages configuration state by merging environment variables and JSON storage."""
     def __init__(self) -> None:
+        """Initialize version and load bootstrap configuration from environment."""
         self.version = "1.0.1"
         self.config = self._load_from_env()
 
     def _load_from_env(self) -> Config:
+        """Hydrate a Config object exclusively from OS environment variables."""
         root = os.getenv("WIKI_ROOT_PATH", str(Path.cwd() / "wiki"))
         return Config(
             wiki_root_path=root,
@@ -55,6 +59,7 @@ class ConfigManager:
         )
 
     def initialize(self) -> None:
+        """Perform the full initialization handshake: merge storage, validate paths, and save."""
         # 1. Start with Env-based config
         base_config = self._load_from_env()
         
@@ -65,7 +70,6 @@ class ConfigManager:
                 stored_data = json.loads(config_file.read_text(encoding="utf-8"))
                 
                 # Normalize paths in stored_data to avoid cross-platform issues
-                # (e.g., if a Windows path 'D:\...' is in config.json but we are in Linux/Docker)
                 if os.name != "nt" and "wikiRootPath" in stored_data:
                     val = str(stored_data["wikiRootPath"])
                     if ":" in val or "\\" in val:
@@ -73,7 +77,6 @@ class ConfigManager:
                         del stored_data["wikiRootPath"]
                 
                 # Merge: File values are base, but Environment Variables TAKE PRECEDENCE
-                # We achieve this by reloading from environment AFTER the merge
                 merged_data = {**stored_data, **base_config.model_dump(exclude_unset=True)}
                 self.config = Config(**merged_data)
             except Exception:
@@ -85,8 +88,9 @@ class ConfigManager:
         self._save_config()
 
     def _ensure_layout(self, root_path: Path) -> None:
+        """Create the necessary directory structure if it does not exist."""
         root_path.mkdir(parents=True, exist_ok=True)
-        for name in ("pages", "raw", "transformed", "logs"):
+        for name in ("pages", "raw", "transformed", "logs", "digests"):
             (root_path / name).mkdir(parents=True, exist_ok=True)
 
     def _config_file_for(self, wiki_root_path: str | Path) -> Path:
@@ -102,9 +106,11 @@ class ConfigManager:
         )
 
     def get_config(self) -> Config:
+        """Retrieve the current active configuration."""
         return self.config
 
     def update_config(self, updates: dict) -> Config:
+        """Apply a partial update to the configuration and persist it to disk."""
         new_data = self.config.model_dump()
         new_data.update({k: v for k, v in updates.items() if v is not None})
         self.config = Config(**new_data)

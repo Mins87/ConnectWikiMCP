@@ -14,11 +14,20 @@ logger = logging.getLogger("connect-wiki.maintenance")
 
 
 class MaintenanceManager:
+    """Orchestrates background tasks to keep the wiki synchronized, indexed, and enriched."""
     def __init__(self) -> None:
+        """Initialize orchestrator dependencies and task tracking."""
         self.wiki = wiki_manager
         self._active_tasks: set[asyncio.Task] = set()
 
     async def perform_maintenance(self, tool_name: str, status: str, metadata: dict[str, Any] | None = None) -> None:
+        """Trigger global maintenance operations based on recent system activity.
+
+        Args:
+            tool_name: The name of the tool that triggered the maintenance.
+            status: Result status of the triggering action.
+            metadata: Additional context like page names or search queries.
+        """
         logger.info("System maintenance triggered by %s (%s)", tool_name, status)
         drift = self._detect_spec_drift()
         self._update_logs_index()
@@ -30,18 +39,28 @@ class MaintenanceManager:
             if page_name:
                 self._schedule_enrichment(page_name)
                 self._schedule_embedding(page_name)
+                self._schedule_digest(page_name)
 
     def _schedule_enrichment(self, page_name: str) -> None:
+        """Coroutine-safe task scheduling for AI content enrichment."""
         task = asyncio.create_task(self._enrich_page_with_ai(page_name))
         self._active_tasks.add(task)
         task.add_done_callback(lambda done: self._active_tasks.discard(done))
 
     def _schedule_embedding(self, page_name: str) -> None:
+        """Coroutine-safe task scheduling for semantic vector indexing."""
         task = asyncio.create_task(self._embed_page(page_name))
         self._active_tasks.add(task)
         task.add_done_callback(lambda done: self._active_tasks.discard(done))
 
+    def _schedule_digest(self, page_name: str) -> None:
+        """Coroutine-safe task scheduling for summary/digest generation."""
+        task = asyncio.create_task(self._generate_digest(page_name))
+        self._active_tasks.add(task)
+        task.add_done_callback(lambda done: self._active_tasks.discard(done))
+
     async def _embed_page(self, page_name: str) -> None:
+        """Calculate and store embeddings for a wiki page's content."""
         try:
             from embedding_manager import embedding_manager
 
@@ -52,7 +71,19 @@ class MaintenanceManager:
         except Exception:
             logger.exception("Embedding indexing failed for '%s'", page_name)
 
+    async def _generate_digest(self, page_name: str) -> None:
+        """Update the metadata digest (summary + tags) for a specific page."""
+        try:
+            from digest_cache import digest_cache
+
+            page = self.wiki.read_page(page_name)
+            if page:
+                await digest_cache.generate_digest(page_name, page.content)
+        except Exception:
+            logger.exception("Digest generation failed for '%s'", page_name)
+
     async def _enrich_page_with_ai(self, page_name: str) -> None:
+        """Optionally rewrite or append useful context to a wiki page using LLM intelligence."""
         try:
             await asyncio.sleep(0.25)
             page = self.wiki.read_page(page_name)
@@ -94,6 +125,7 @@ class MaintenanceManager:
 
 
     def _detect_spec_drift(self) -> bool:
+        """Compare technical specification modified time with source code to detect misalignment."""
         spec_page = self.wiki.pages_dir / "Project" / "ConnectWiki" / "Specification.md"
         if not spec_page.exists():
             return True
@@ -102,6 +134,7 @@ class MaintenanceManager:
         return any(src_file.stat().st_mtime > spec_mtime for src_file in src_dir.glob("*.py"))
 
     def _update_status_page(self, *, drift_detected: bool) -> None:
+        """Update the Project Status Dashboard with dynamic system health information."""
         page_name = "Project/ConnectWiki/Status"
         existing = self.wiki.read_page(page_name)
         content = existing.content if existing else "# Project Status Dashboard\n"
@@ -131,6 +164,11 @@ class MaintenanceManager:
             logger.exception("Failed to auto-update knowledge graph visualizer")
 
     def bootstrap_system_docs(self, overwrite: bool = False) -> int:
+        """Synchronize boilerplate system documentation from the docs/system template folder.
+
+        Args:
+            overwrite: Whether to force rewrite existing pages.
+        """
         project_root = Path(__file__).parent.parent
         docs_src = project_root / "docs" / "system"
         if not docs_src.exists():
@@ -199,7 +237,66 @@ Do NOT rewrite the full document. Output only the new section to append."""
         # Log the evolution event
         self.wiki.log_intent("Auto evolution cycle", "EvolutionCycle", "Success", {"logs_analyzed": len(logs)})
         logger.info("Evolution cycle completed: updated System/Intelligence.md")
+
+        # Also refresh the knowledge briefing
+        try:
+            briefing_summary = await self.generate_knowledge_briefing()
+            logger.info("Knowledge briefing updated: %s", briefing_summary)
+        except Exception:
+            logger.exception("Knowledge briefing generation failed")
+
         return f"Evolution complete: analyzed {len(logs)} events and appended new insights."
+
+    async def generate_knowledge_briefing(self) -> str:
+        """Local LLM reads all digests and generates a compact briefing page.
+
+        This single page lets the external LLM orient itself about the entire
+        wiki state without reading every page individually.
+        """
+        from digest_cache import digest_cache
+        from llm_client import llm_client
+
+        all_pages = self.wiki.list_pages()
+        digest_entries = []
+        for name in all_pages:
+            digest = digest_cache.get_digest(name)
+            if digest:
+                summary = digest.get("summary", "")
+                tags = ", ".join(digest.get("tags", []))
+                digest_entries.append(f"- **{name}**: {summary} [{tags}]")
+            else:
+                digest_entries.append(f"- **{name}**: (no digest)")
+
+        digest_overview = "\n".join(digest_entries)
+
+        prompt = (
+            f"Create a Knowledge Briefing page for this wiki ({len(all_pages)} pages).\n\n"
+            "Structure:\n"
+            "1. **Overview**: What this wiki is about (2-3 sentences)\n"
+            "2. **Key Topics**: Top 5-7 topic clusters with brief descriptions\n"
+            "3. **Recent Focus**: What topics seem most active/detailed\n"
+            "4. **Knowledge Gaps**: Areas with thin coverage\n\n"
+            f"ALL PAGES AND SUMMARIES:\n{digest_overview}\n\n"
+            "Keep the total briefing under 500 words. Use [[WikiLinks]] for page references."
+        )
+
+        try:
+            briefing = await llm_client.complete_text(
+                prompt,
+                system_prompt="You are a Knowledge Librarian. Create clear, scannable briefings.",
+            )
+        except Exception as exc:
+            logger.error("Knowledge briefing LLM call failed: %s", exc)
+            # Fallback: list-based briefing without LLM
+            briefing = "## Pages\n" + digest_overview
+
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
+        header = (
+            "# 📚 Knowledge Briefing\n\n"
+            f"> Auto-generated: {timestamp} | Pages: {len(all_pages)}\n\n"
+        )
+        self.wiki.write_page("System/KnowledgeBriefing", header + briefing)
+        return f"{len(all_pages)} pages analyzed."
 
 
 maintenance_manager = MaintenanceManager()

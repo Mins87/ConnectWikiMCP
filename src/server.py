@@ -10,6 +10,7 @@ import os
 import socket
 import sys
 import threading
+from datetime import datetime
 from typing import Any, Callable
 
 from mcp.server.fastmcp import FastMCP
@@ -32,6 +33,17 @@ READ_ONLY_TOOLS = {
     "EvolutionAudit",
     "AccessOriginalSource",
     "OrganizeByTag",
+    "GetCompressedContext",
+}
+
+# Response auto-compression: local LLM compresses large tool responses
+# before they reach the external LLM, saving expensive tokens.
+COMPRESS_THRESHOLD = 1500  # characters — compress responses longer than this
+COMPRESS_EXCLUDE = {
+    "FetchWikiPage",       # users may need exact content
+    "EvolutionAudit",      # raw log data should be intact
+    "AnalyzeKnowledgeGraph",  # structured JSON — compression may break it
+    "AccessOriginalSource",   # raw source should be intact
 }
 
 
@@ -53,6 +65,34 @@ def is_port_in_use(port: int) -> bool:
         return s.connect_ex(("0.0.0.0", port)) == 0
 
 
+async def _compress_response(tool_name: str, response: str) -> str:
+    """Use local LLM to compress a verbose tool response.
+
+    Falls back to the original response if the LLM is unavailable or
+    the compressed version is not significantly shorter.
+    """
+    try:
+        from llm_client import llm_client
+
+        prompt = (
+            "Compress this tool response while preserving ALL key information.\n"
+            "Remove redundancy, boilerplate, and verbose formatting. Keep data intact.\n\n"
+            f"TOOL: {tool_name}\n"
+            f"RESPONSE ({len(response)} chars):\n"
+            f"{response[:4000]}"
+        )
+        compressed = await llm_client.complete_text(
+            prompt,
+            system_prompt="You are a lossless text compressor. Preserve all facts. Remove only noise.",
+        )
+        # Only use compressed version if it's actually shorter
+        if compressed and len(compressed) < len(response) * 0.8:
+            return f"{compressed}\n\n> \U0001f4e6 Compressed: {len(response)} → {len(compressed)} chars"
+    except Exception:
+        pass  # LLM unavailable — return original
+    return response
+
+
 def autonomous_action(func: Callable[..., Any]) -> Callable[..., Any]:
     @functools.wraps(func)
     async def wrapper(*args: Any, **kwargs: Any) -> Any:
@@ -68,6 +108,15 @@ def autonomous_action(func: Callable[..., Any]) -> Callable[..., Any]:
             # Shield stdout during tool execution to prevent stream corruption
             with contextlib.redirect_stdout(sys.stderr):
                 result = await func(*args, **kwargs)
+
+            # Auto-compress large responses using local LLM (free tokens)
+            if (
+                isinstance(result, str)
+                and len(result) > COMPRESS_THRESHOLD
+                and tool_name not in COMPRESS_EXCLUDE
+            ):
+                result = await _compress_response(tool_name, result)
+
             wiki_manager.log_intent(query, tool_name, "Success", metadata)
             if not is_read_only:
                 await maintenance_manager.perform_maintenance(tool_name, "Success", metadata)
@@ -85,6 +134,11 @@ def autonomous_action(func: Callable[..., Any]) -> Callable[..., Any]:
 @mcp.tool()
 @autonomous_action
 async def FetchWikiPage(name: str) -> str:
+    """Read the raw markdown content of a specific wiki page.
+
+    Args:
+        name: The exact title or path of the page to retrieve.
+    """
     from wiki_manager import wiki_manager
 
     page = wiki_manager.read_page(name)
@@ -96,6 +150,12 @@ async def FetchWikiPage(name: str) -> str:
 @mcp.tool()
 @autonomous_action
 async def SaveWikiContent(name: str, content: str) -> str:
+    """Create a new wiki page or update an existing one with markdown content.
+
+    Args:
+        name: The unique identifier for the page.
+        content: The full markdown content of the page.
+    """
     from wiki_manager import wiki_manager
 
     wiki_manager.write_page(name, content)
@@ -105,6 +165,8 @@ async def SaveWikiContent(name: str, content: str) -> str:
 @mcp.tool()
 @autonomous_action
 async def ListAllKnowledge() -> str:
+    """Return a flat list of all existing wiki page titles in the system.
+    """
     from wiki_manager import wiki_manager
 
     return "\n".join(wiki_manager.list_pages())
@@ -113,6 +175,12 @@ async def ListAllKnowledge() -> str:
 @mcp.tool()
 @autonomous_action
 async def SearchAcrossWiki(query: str) -> str:
+    """Perform a semantic search across the wiki to find relevant context and summaries.
+
+    Args:
+        query: The natural language search term or question.
+    """
+    from digest_cache import digest_cache
     from wiki_manager import wiki_manager
 
     results = await wiki_manager.search_wiki_semantic(query)
@@ -121,9 +189,14 @@ async def SearchAcrossWiki(query: str) -> str:
 
     chunks = []
     for page in results:
-        preview = page.content[:200] + "..." if len(page.content) > 200 else page.content
-        chunks.append(f"## {page.name}\n{preview}")
-    return "\n\n".join(chunks)
+        digest = await digest_cache.ensure_digest(page.name, page.content)
+        summary = digest.get("summary", page.content[:100])
+        tags = " ".join(f"#{t}" for t in digest.get("tags", []))
+        entry = f"- **{page.name}**: {summary}"
+        if tags:
+            entry += f"  {tags}"
+        chunks.append(entry)
+    return "\n".join(chunks)
 
 
 @mcp.tool()
@@ -145,6 +218,11 @@ async def RebuildSearchIndex() -> str:
 @mcp.tool()
 @autonomous_action
 async def ExploreConnections(name: str) -> str:
+    """Identify all pages that contain links pointing to the specified page (backlinks).
+
+    Args:
+        name: The name of the target page to analyze connections for.
+    """
     from wiki_manager import wiki_manager
 
     backlinks = wiki_manager.get_backlinks(name)
@@ -156,6 +234,8 @@ async def ExploreConnections(name: str) -> str:
 @mcp.tool()
 @autonomous_action
 async def AnalyzeKnowledgeGraph() -> str:
+    """Provide a structured JSON representation of the entire knowledge graph (nodes/edges).
+    """
     from wiki_manager import wiki_manager
 
     return json.dumps(wiki_manager.get_graph_data(), indent=2, ensure_ascii=False)
@@ -164,6 +244,12 @@ async def AnalyzeKnowledgeGraph() -> str:
 @mcp.tool()
 @autonomous_action
 async def CaptureQuickNote(name: str, content: str) -> str:
+    """Store raw text or ideas into the 'raw' staging area for later wiki integration.
+
+    Args:
+        name: A title or identifier for the raw note.
+        content: The text to be captured.
+    """
     from wiki_manager import wiki_manager
 
     filename = wiki_manager.ingest_raw(name, content)
@@ -223,6 +309,11 @@ async def CaptureFromURL(url: str, name: str | None = None) -> str:
 @mcp.tool()
 @autonomous_action
 async def AccessOriginalSource(path: str) -> str:
+    """Retrieve the full raw content of a file located in the staging 'raw' folder.
+
+    Args:
+        path: The relative path or filename within the raw directory.
+    """
     from wiki_manager import wiki_manager
 
     content = await wiki_manager.read_raw(path)
@@ -234,6 +325,8 @@ async def AccessOriginalSource(path: str) -> str:
 @mcp.tool()
 @autonomous_action
 async def SyncDocuments() -> str:
+    """Trigger a synchronization of the 'raw' folder to prepare documents for synthesis.
+    """
     from wiki_manager import wiki_manager
 
     status = wiki_manager.sync_raw_folder()
@@ -243,6 +336,12 @@ async def SyncDocuments() -> str:
 @mcp.tool()
 @autonomous_action
 async def SynthesizeKnowledge(raw_filename: str, target_page_name: str) -> str:
+    """Transform raw staged information into a structured wiki page using local LLM synthesis.
+
+    Args:
+        raw_filename: The name of the source file in the raw folder.
+        target_page_name: The desired title for the synthesized wiki page.
+    """
     from llm_client import llm_client
     from wiki_manager import wiki_manager
 
@@ -258,6 +357,11 @@ async def SynthesizeKnowledge(raw_filename: str, target_page_name: str) -> str:
 @mcp.tool()
 @autonomous_action
 async def OrganizeByTag(tag: str) -> str:
+    """Filter raw staged material by a specific tag to discover related sources.
+
+    Args:
+        tag: The tag to filter by (without the # symbol).
+    """
     from wiki_manager import wiki_manager
 
     files = wiki_manager.get_tagged_raw_files(tag)
@@ -269,6 +373,8 @@ async def OrganizeByTag(tag: str) -> str:
 @mcp.tool()
 @autonomous_action
 async def EvolutionAudit() -> str:
+    """Expose recent system intent logs to analyze tool usage and evolution trends.
+    """
     from wiki_manager import wiki_manager
 
     logs = wiki_manager.read_intent_logs(100)
@@ -287,6 +393,16 @@ async def ConfigureSettings(
     local_llm_api_key: str | None = None,
     mcp_port: int | None = None,
 ) -> str:
+    """Update runtime configuration parameters for the ConnectWiki orchestration layer.
+
+    Args:
+        wiki_root_path: The local filesystem path for wiki data.
+        local_llm_type: Backend type (e.g., 'ollama', 'llamacpp').
+        local_llm_api_url: Connection URL for local inference.
+        local_llm_model: Target model identifier.
+        local_llm_api_key: Optional token for inference APIs.
+        mcp_port: Networking port for the MCP interface.
+    """
     updates = {
         "wiki_root_path": wiki_root_path,
         "local_llm_type": local_llm_type,
@@ -313,10 +429,173 @@ async def RenderKnowledgeGraph() -> str:
 @mcp.tool()
 @autonomous_action
 async def ResetSystemDocs() -> str:
+    """Force an update and reset of system-level documentation pages within the wiki.
+    """
     from maintenance_manager import maintenance_manager
 
     synced = maintenance_manager.bootstrap_system_docs(overwrite=True)
     return f"System documentation synchronized: {synced} file(s) updated."
+
+
+@mcp.tool()
+@autonomous_action
+async def GetCompressedContext(
+    query: str,
+    max_pages: int = 5,
+    instruction: str | None = None,
+) -> str:
+    """Get a compressed briefing on a topic, synthesized by the local LLM.
+
+    Instead of reading multiple wiki pages yourself, let the internal LLM
+    read them and provide a focused briefing. This saves significant tokens.
+
+    Args:
+        query: The topic or question to get context about
+        max_pages: Maximum number of source pages to read (default: 5)
+        instruction: Optional specific focus for the briefing
+    """
+    from wiki_manager import wiki_manager
+
+    results = await wiki_manager.search_wiki_semantic(query, top_k=max_pages)
+    if not results:
+        return "No relevant context found in the wiki."
+
+    # Local LLM reads ALL the raw content (free!)
+    raw_context = "\n\n---\n\n".join(
+        f"## {page.name}\n{page.content[:3000]}"
+        for page in results
+    )
+
+    focus = instruction or f"the topic: {query}"
+    prompt = (
+        f"Read the following wiki pages and create a CONCISE briefing "
+        f"focused on {focus}.\n\n"
+        "Rules:\n"
+        "- Maximum 300 words\n"
+        "- Include only facts directly relevant to the focus\n"
+        "- Cite page names in brackets [PageName] when referencing specific information\n"
+        "- Use bullet points for key facts\n"
+        "- Skip boilerplate, headers, and metadata\n\n"
+        f"SOURCE PAGES ({len(results)} pages):\n"
+        f"{raw_context}"
+    )
+
+    try:
+        from llm_client import llm_client
+
+        briefing = await llm_client.complete_text(
+            prompt,
+            system_prompt=(
+                "You are a context compression engine. Be extremely concise. "
+                "Every word must carry information."
+            ),
+        )
+    except Exception:
+        # Fallback: return digest summaries when LLM is unavailable
+        from digest_cache import digest_cache
+
+        chunks = []
+        for page in results:
+            digest = await digest_cache.ensure_digest(page.name, page.content)
+            chunks.append(f"- **{page.name}**: {digest.get('summary', page.content[:100])}")
+        briefing = "\n".join(chunks)
+
+    return f"\U0001f4cb **Compressed Briefing** (from {len(results)} pages):\n\n{briefing}"
+
+
+@mcp.tool()
+@autonomous_action
+async def CaptureReasoningTrace(
+    session_id: str,
+    reasoning_type: str,
+    content: str,
+    context_refs: list[str] | None = None,
+) -> str:
+    """Capture a step of LLM reasoning process for knowledge accumulation.
+
+    Call this at key moments during your thinking process.
+    The internal LLM will auto-distill verbose traces.
+
+    Args:
+        session_id: Unique session identifier (e.g. 'sess-2026-04-14-topic')
+        reasoning_type: One of 'planning', 'analysis', 'decision', 'conclusion'
+        content: The reasoning content to capture
+        context_refs: Wiki pages referenced during this reasoning step
+    """
+    from wiki_manager import wiki_manager
+
+    # Distill long reasoning with local LLM (free)
+    compressed = content
+    if len(content) > 300:
+        try:
+            from llm_client import llm_client
+
+            compressed = await llm_client.complete_text(
+                f"Distill this reasoning into 1-2 key sentences:\n\n{content[:2000]}",
+                system_prompt="Extract only the essential insight. Maximum 2 sentences.",
+            )
+        except Exception:
+            compressed = content[:300] + "..."
+
+    trace = {
+        "timestamp": datetime.now().isoformat(),
+        "session_id": session_id,
+        "type": reasoning_type,
+        "content": compressed,
+        "raw_length": len(content),
+        "refs": context_refs or [],
+    }
+
+    log_dir = wiki_manager.logs_dir / "reasoning"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    with (log_dir / f"{session_id}.jsonl").open("a", encoding="utf-8") as f:
+        f.write(json.dumps(trace, ensure_ascii=False) + "\n")
+
+    return f"Trace captured ({reasoning_type}): {len(content)} → {len(compressed)} chars"
+
+
+@mcp.tool()
+@autonomous_action
+async def CaptureSessionSummary(
+    session_id: str,
+    topic: str,
+    summary: str,
+    key_decisions: list[str] | None = None,
+    new_knowledge: str | None = None,
+    tags: list[str] | None = None,
+) -> str:
+    """Distill a completed reasoning session into a wiki page.
+
+    Call at the end of a significant analysis or problem-solving session.
+
+    Args:
+        session_id: The session identifier used in CaptureReasoningTrace
+        topic: Short topic title for the session
+        summary: Concise summary of the session findings
+        key_decisions: List of key decisions made during the session
+        new_knowledge: New knowledge discovered during the session
+        tags: Categorization tags for the session
+    """
+    from wiki_manager import wiki_manager
+
+    date_str = datetime.now().strftime("%Y-%m-%d")
+    page_name = f"LLM/Sessions/{date_str}/{topic}"
+
+    lines = [f"# {topic}", "", f"> Session: `{session_id}`", f"> Date: {date_str}", ""]
+
+    if summary:
+        lines += ["## Summary", summary, ""]
+    if key_decisions:
+        lines += ["## Key Decisions"]
+        lines += [f"- {d}" for d in key_decisions]
+        lines += [""]
+    if new_knowledge:
+        lines += ["## New Knowledge", new_knowledge, ""]
+    if tags:
+        lines += ["---", "**Tags**: " + " ".join(f"#{t}" for t in tags)]
+
+    wiki_manager.write_page(page_name, "\n".join(lines))
+    return f"Session summary saved to '{page_name}'"
 
 
 @mcp.prompt()
@@ -347,6 +626,42 @@ Instructions:
 3. Identify frequent keywords, tool success/failure patterns, and writing preferences.
 4. Update 'System/Intelligence' with new insights using 'SaveWikiContent'.
 5. Report what changed.
+""".strip()
+
+
+@mcp.prompt()
+def ReasoningCaptureMode() -> str:
+    return """
+Identity: You are operating in Reasoning Capture Mode.
+Goal: Actively log your thinking process into the wiki for future reference.
+
+Protocol:
+1. At the START of a complex task, call CaptureReasoningTrace with:
+   - session_id: Generate a unique ID (e.g. "sess-YYYY-MM-DD-topic-slug")
+   - reasoning_type: "planning"
+   - content: Your initial analysis and approach
+
+2. During ANALYSIS, call CaptureReasoningTrace with:
+   - reasoning_type: "analysis"
+   - content: Key findings, comparisons, and intermediate conclusions
+   - context_refs: Wiki pages you referenced
+
+3. At each DECISION point, call CaptureReasoningTrace with:
+   - reasoning_type: "decision"
+   - content: Options considered, trade-offs, and final choice
+
+4. At the END of the session, call CaptureSessionSummary with:
+   - A concise summary, key decisions list, and any new knowledge discovered
+
+Token Optimization Tips:
+- Use 'GetCompressedContext' instead of multiple 'FetchWikiPage' calls
+- Read 'System/KnowledgeBriefing' for a quick wiki orientation
+- Use 'SearchAcrossWiki' for efficient topic discovery (returns LLM summaries)
+
+Rules:
+- Keep traces concise (2-3 sentences each)
+- Only capture SIGNIFICANT reasoning steps, not trivial operations
+- Always include context_refs when you read from the wiki
 """.strip()
 
 

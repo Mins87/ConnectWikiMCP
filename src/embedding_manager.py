@@ -36,9 +36,11 @@ class EmbeddingManager:
 
     @property
     def _index_path(self) -> Path:
+        """The filesystem path where the vector index is stored."""
         return Path(config_manager.get_config().wiki_root_path) / "embeddings.json"
 
     def _load(self) -> None:
+        """Load the vector index from disk into memory if not already loaded."""
         if self._loaded:
             return
         if self._index_path.exists():
@@ -49,6 +51,7 @@ class EmbeddingManager:
         self._loaded = True
 
     def _save(self) -> None:
+        """Serialize the current memory index to disk safely."""
         self._index_path.parent.mkdir(parents=True, exist_ok=True)
         self._index_path.write_text(
             json.dumps(self._index, ensure_ascii=False),
@@ -70,6 +73,11 @@ class EmbeddingManager:
         logger.debug("Indexed embedding for '%s'", name)
 
     async def remove_page(self, name: str) -> None:
+        """Remove a page's embedding from the index.
+
+        Args:
+            name: The title of the page to remove.
+        """
         self._load()
         if name in self._index:
             del self._index[name]

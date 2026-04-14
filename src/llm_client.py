@@ -9,10 +9,18 @@ from config import config_manager
 
 
 class LocalLlmClient:
+    """Handles communication with various local LLM backends and external APIs."""
     def __init__(self) -> None:
+        """Initialize the client with default request timeouts."""
         self._timeout = 120.0
 
     async def complete_text(self, prompt: str, *, system_prompt: str | None = None) -> str:
+        """Core text generation entry point that routes to the configured backend.
+
+        Args:
+            prompt: User input prompt.
+            system_prompt: Optional instructions to guide the model's behavior.
+        """
         cfg = config_manager.get_config()
         if cfg.local_llm_type == "ollama":
             return await self._complete_ollama(prompt=prompt, system_prompt=system_prompt)
@@ -23,6 +31,7 @@ class LocalLlmClient:
         raise ValueError(f"Unsupported LLM type: {cfg.local_llm_type}")
 
     async def generate_wiki_page(self, raw_content: str) -> str:
+        """Convert messy raw notes into a polished, structured wiki page."""
         prompt = (
             "Convert the following raw notes into a structured Markdown wiki page. "
             "Use concise headings, bullet points, and tables only when they add clarity.\n\n"
@@ -31,6 +40,7 @@ class LocalLlmClient:
         return await self.complete_text(prompt, system_prompt="You are a professional Wiki compiler.")
 
     async def generate_json(self, prompt: str, *, system_prompt: str | None = None) -> dict[str, Any]:
+        """Request a JSON response from the LLM and parse it into a Python dictionary."""
         response = await self.complete_text(prompt, system_prompt=system_prompt)
         return self._extract_json(response)
 
@@ -57,6 +67,7 @@ class LocalLlmClient:
         return []
 
     def _extract_json(self, response: str) -> dict[str, Any]:
+        """Sanitize and parse a JSON string from the model's raw text output."""
         response = response.strip()
         try:
             return json.loads(response)
@@ -70,6 +81,7 @@ class LocalLlmClient:
         return json.loads(response[start:end + 1])
 
     async def _complete_ollama(self, *, prompt: str, system_prompt: str | None = None) -> str:
+        """Internal handler for Ollama's non-chat /api/generate endpoint."""
         cfg = config_manager.get_config()
         url = f"{cfg.local_llm_api_url.rstrip('/')}/api/generate"
         payload = {
@@ -77,6 +89,11 @@ class LocalLlmClient:
             "prompt": prompt,
             "system": system_prompt or "",
             "stream": False,
+            "options": {
+                "temperature": 1.0,
+                "top_p": 0.95,
+                "top_k": 64,
+            },
         }
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(url, json=payload)
@@ -84,10 +101,17 @@ class LocalLlmClient:
             return response.json().get("response", "")
 
     async def _complete_llamacpp(self, *, prompt: str, system_prompt: str | None = None) -> str:
+        """Internal handler for llama.cpp /completion endpoint."""
         cfg = config_manager.get_config()
         url = f"{cfg.local_llm_api_url.rstrip('/')}/completion"
         full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
-        payload = {"prompt": full_prompt, "n_predict": 2048}
+        payload = {
+            "prompt": full_prompt, 
+            "n_predict": 2048,
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "top_k": 64,
+        }
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(url, json=payload)
             response.raise_for_status()
@@ -95,6 +119,7 @@ class LocalLlmClient:
             return data.get("content") or data.get("response") or ""
 
     async def _complete_external(self, *, prompt: str, system_prompt: str | None = None) -> str:
+        """Internal handler for OpenAI-compatible chat completion APIs."""
         cfg = config_manager.get_config()
         url = f"{cfg.local_llm_api_url.rstrip('/')}/v1/chat/completions"
         headers = {"Content-Type": "application/json"}
@@ -105,7 +130,13 @@ class LocalLlmClient:
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
-        payload = {"model": cfg.local_llm_model, "messages": messages, "temperature": 0.2}
+        payload = {
+            "model": cfg.local_llm_model, 
+            "messages": messages, 
+            "temperature": 1.0,
+            "top_p": 0.95,
+            "top_k": 64,
+        }
 
         async with httpx.AsyncClient(timeout=self._timeout) as client:
             response = await client.post(url, json=payload, headers=headers)

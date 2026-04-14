@@ -13,6 +13,8 @@ services:
       - LOCAL_LLM_API_URL=${LOCAL_LLM_API_URL:-http://host.docker.internal:11434}
       - LOCAL_LLM_MODEL=${LOCAL_LLM_MODEL:-gemma4-E4B-it}
       - LOCAL_LLM_API_KEY=${LOCAL_LLM_API_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      - EVOLUTION_INTERVAL_HOURS=${EVOLUTION_INTERVAL_HOURS:-6}
       - MCP_TRANSPORT=${MCP_TRANSPORT:-stdio}
       - MCP_PORT=${MCP_PORT:-8000}
     extra_hosts:

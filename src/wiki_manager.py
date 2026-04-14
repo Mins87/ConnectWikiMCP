@@ -17,36 +17,55 @@ REDACT_KEYS = {"local_llm_api_key", "api_key", "authorization", "token", "passwo
 
 @dataclass(slots=True)
 class WikiPage:
+    """Represents a single wiki page with its metadata and content."""
     name: str
     content: str
     mtime: datetime
 
 
 class WikiManager:
+    """Manages wiki page storage, retrieval, search, and relationship mapping."""
     def __init__(self) -> None:
+        """Initialize the manager and internal state."""
         self._mid = None
 
     @property
     def root_dir(self) -> Path:
+        """The base directory for all wiki data."""
         return Path(config_manager.get_config().wiki_root_path)
 
     @property
     def pages_dir(self) -> Path:
+        """Directory containing formal wiki pages (.md)."""
         return self.root_dir / "pages"
 
     @property
     def raw_dir(self) -> Path:
+        """Directory for raw, unorganized staged content."""
         return self.root_dir / "raw"
 
     @property
     def transformed_dir(self) -> Path:
+        """Directory for markdown versions of non-md raw files."""
         return self.root_dir / "transformed"
 
     @property
     def logs_dir(self) -> Path:
+        """Directory for system intent and maintenance logs."""
         return self.root_dir / "logs"
 
     def _safe_relative(self, relative_path: str) -> Path:
+        """Validate and resolve a relative path to prevent directory traversal.
+
+        Args:
+            relative_path: User-provided relative path string.
+
+        Returns:
+            A safe Path object.
+
+        Raises:
+            ValueError: If the path is absolute or attempts traversal.
+        """
         relative = Path(relative_path)
         if relative.is_absolute():
             raise ValueError("Absolute paths are not allowed.")
@@ -66,9 +85,19 @@ class WikiManager:
         return relative
 
     def get_transformed_path(self, relative_raw_path: str) -> Path:
+        """Calculate the shadow markdown path for a raw file.
+
+        Args:
+            relative_raw_path: The relative path inside the raw directory.
+        """
         return self.transformed_dir / f"{self._safe_relative(relative_raw_path).as_posix()}.md"
 
     def read_page(self, name: str) -> WikiPage | None:
+        """Load a wiki page by its name.
+
+        Returns:
+            A WikiPage object or None if the page doesn't exist.
+        """
         file_path = self.pages_dir / f"{name}.md"
         if not file_path.exists() or file_path.is_dir():
             return None
@@ -78,9 +107,16 @@ class WikiManager:
 
     @property
     def history_dir(self) -> Path:
+        """Directory for page versioning/backups."""
         return self.root_dir / "history"
 
     def write_page(self, name: str, content: str) -> None:
+        """Write markdown content to a page, creating a backup if it existed.
+
+        Args:
+            name: Page title.
+            content: Markdown text.
+        """
         file_path = self.pages_dir / f"{name}.md"
         file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -94,11 +130,13 @@ class WikiManager:
         file_path.write_text(content, encoding="utf-8")
 
     def delete_page(self, name: str) -> None:
+        """Permanently remove a wiki page from the filesystem."""
         file_path = self.pages_dir / f"{name}.md"
         if file_path.exists() and file_path.is_file():
             file_path.unlink()
 
     def list_pages(self) -> list[str]:
+        """List all wiki page titles found in the pages directory."""
         if not self.pages_dir.exists():
             return []
         return sorted(
@@ -136,12 +174,15 @@ class WikiManager:
         return self.search_wiki(query)
 
     def extract_links(self, content: str) -> list[str]:
+        """Extract all unique [[WikiLinks]] from markdown content."""
         return sorted({match.strip() for match in WIKILINK_RE.findall(content) if match.strip()})
 
     def extract_tags(self, content: str) -> list[str]:
+        """Extract all unique #tags from markdown content."""
         return sorted({match.strip() for match in TAG_RE.findall(content) if match.strip()})
 
     def get_backlinks(self, target_page: str) -> list[str]:
+        """Find all pages that link to the given target_page."""
         backlinks: list[str] = []
         for name in self.list_pages():
             if name == target_page:
@@ -152,6 +193,7 @@ class WikiManager:
         return backlinks
 
     def get_graph_data(self) -> dict[str, Any]:
+        """Generate a structured graph of all pages and their internal links."""
         pages = set(self.list_pages())
         links = []
         for name in sorted(pages):
@@ -172,6 +214,7 @@ class WikiManager:
         return {"nodes": nodes, "links": links}
 
     def get_tagged_raw_files(self, tag: str) -> list[str]:
+        """Retrieve all raw source files that contain a specific #tag."""
         target = f"#{tag}"
         matches: list[str] = []
         for rel_path in self.list_raw():
@@ -184,6 +227,7 @@ class WikiManager:
         return matches
 
     def sanitize_metadata(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        """Redact sensitive keys and truncate long strings in log metadata."""
         safe: dict[str, Any] = {}
         for key, value in metadata.items():
             if key.lower() in REDACT_KEYS:
@@ -195,6 +239,7 @@ class WikiManager:
         return safe
 
     def log_intent(self, query: str, tool_name: str, outcome: str, metadata: dict[str, Any] | None = None) -> None:
+        """Record an LLM's tool usage intent and outcome for system evolution audits."""
         self.logs_dir.mkdir(parents=True, exist_ok=True)
         entry = {
             "timestamp": datetime.now().isoformat(),
@@ -208,6 +253,7 @@ class WikiManager:
             handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
 
     def read_intent_logs(self, limit: int = 50) -> list[dict[str, Any]]:
+        """Read the most recent entries from the intent history log."""
         log_file = self.logs_dir / "intent_history.jsonl"
         if not log_file.exists():
             return []
@@ -215,6 +261,7 @@ class WikiManager:
         return [json.loads(line) for line in lines[-limit:] if line.strip()]
 
     def ingest_raw(self, name: str, content: str) -> str:
+        """Save raw text into a timestamped file in the staging directory."""
         timestamp = datetime.now().isoformat().replace(":", "-").replace(".", "-")
         safe_name = Path(name).name
         filename = f"{timestamp}-{safe_name}.md"
@@ -223,6 +270,7 @@ class WikiManager:
         return filename
 
     async def read_raw(self, relative_path: str) -> str | None:
+        """Read a file from the raw folder, performing conversion to markdown if needed."""
         rel = self._safe_relative(relative_path)
         abs_raw_path = self.raw_dir / rel
         if not abs_raw_path.exists() or abs_raw_path.is_dir():
@@ -241,6 +289,7 @@ class WikiManager:
         return source_path.stat().st_mtime > target_path.stat().st_mtime
 
     def convert_file_to_md(self, source_path: Path, target_path: Path) -> None:
+        """Use MarkItDown to convert any file format into a markdown equivalent."""
         target_path.parent.mkdir(parents=True, exist_ok=True)
         try:
             if self._mid is None:
@@ -252,6 +301,7 @@ class WikiManager:
             raise RuntimeError(f"MarkItDown conversion failed for {source_path.name}: {exc}") from exc
 
     def sync_raw_folder(self) -> dict[str, int]:
+        """Scan and convert all outdated or new items in the raw folder to transformed markdown."""
         converted = 0
         skipped = 0
         if not self.raw_dir.exists():
@@ -273,6 +323,7 @@ class WikiManager:
         return {"converted": converted, "skipped": skipped}
 
     def list_raw(self) -> list[str]:
+        """List all files in the raw folder by their relative paths."""
         if not self.raw_dir.exists():
             return []
         return sorted(
