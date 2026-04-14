@@ -5,10 +5,6 @@ Exposes exactly 4 MCP tools:
   - Read:  Retrieve compiled wiki pages
   - SystemStatus: View system health and visualizer link
   - ConfigureSettings: Update runtime configuration
-
-All compilation from raw → wiki is handled internally by the
-local LLM pipeline (CompileEngine + Scheduler). External AI agents
-only consume the finished wiki product.
 """
 from __future__ import annotations
 
@@ -18,45 +14,40 @@ import json
 import logging
 import os
 import re
-import socket
 import sys
+import socket
 from datetime import datetime
 from typing import Any, Optional
+from pathlib import Path
+from contextlib import asynccontextmanager
 
 from mcp.server.fastmcp import FastMCP
 
-from config import config_manager
+# New Architecture Imports
+from config.config import config_manager
+from managers.raw_manager import RawManager
+from managers.transform_manager import TransformManager
+from managers.hierarchy_manager import HierarchyManager
+from managers.maintenance_manager import maintenance_manager
+from watchers.antigravity import AntigravityWatcher
 
 logger = logging.getLogger("connect-wiki.server")
 
 mcp = FastMCP("ConnectWikiMCP")
 
-
 def is_port_in_use(port: int) -> bool:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        return s.connect_ex(("0.0.0.0", port)) == 0
-
+        return s.connect_ex(("127.0.0.1", port)) == 0
 
 # ── Core Tools ───────────────────────────────────────────────
-
 
 @mcp.tool()
 async def Write(input: str, name: Optional[str] = None) -> str:
     """Store information into the knowledge base for processing.
-
-    Accepts raw text or a URL. URLs are automatically detected and
-    their content is extracted:
-    - Regular web pages: text extraction via trafilatura
-    - YouTube URLs: transcript extraction via YouTube API
-
-    The data is saved to the raw staging area. A background scheduler
-    will compile it into structured wiki pages automatically.
-
-    Args:
-        input: Text content or a URL to capture.
-        name: Optional title/identifier for the entry.
+    Accepts raw text or a URL. 
     """
-    from wiki_manager import wiki_manager
+    if not raw_manager:
+        return "Error: RawManager not initialized."
 
     input_stripped = input.strip()
 
@@ -65,29 +56,27 @@ async def Write(input: str, name: Optional[str] = None) -> str:
         return await _ingest_url(input_stripped, name)
 
     # ── Raw text / memo ──
-    note_name = name or f"memo_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    note_name = name or f"memo_{datetime.now().strftime('%Y%h%d_%H%M%S')}"
     safe_name = re.sub(r"[^\w\s-]", "", note_name)
     safe_name = re.sub(r"[\s]+", "_", safe_name).strip("_")
 
     timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
     filename = f"{timestamp}-{safe_name}.md"
-    filepath = wiki_manager.raw_memos_dir / filename
+    
+    # Corrected: Use raw_manager's structure instead of legacy wiki_manager
+    filepath = raw_manager.raw_dir / "memos" / filename
     filepath.parent.mkdir(parents=True, exist_ok=True)
     filepath.write_text(f"# {note_name}\n\n{input_stripped}", encoding="utf-8")
 
     _log_intent("Write", "Success", {"name": note_name, "type": "memo", "size": len(input_stripped)})
-    return f"Memo '{note_name}' saved. It will be compiled into the wiki automatically."
-
+    return f"Memo '{note_name}' saved to raw/memos. It will be processed by the 3-layer pipeline."
 
 async def _ingest_url(url: str, name: str | None) -> str:
     """Extract content from a URL and save to raw/files/."""
-    from wiki_manager import wiki_manager
-
     yt_pattern = re.compile(r"(?:youtube\.com/watch\?v=|youtu\.be/)([\w-]+)")
     yt_match = yt_pattern.search(url)
 
     if yt_match:
-        # YouTube transcript
         video_id = yt_match.group(1)
         try:
             from youtube_transcript_api import YouTubeTranscriptApi
@@ -100,7 +89,6 @@ async def _ingest_url(url: str, name: str | None) -> str:
         except Exception as exc:
             return f"Failed to fetch YouTube transcript: {exc}"
     else:
-        # Regular web page
         try:
             import trafilatura
             downloaded = await asyncio.to_thread(trafilatura.fetch_url, url)
@@ -117,74 +105,59 @@ async def _ingest_url(url: str, name: str | None) -> str:
         except Exception as exc:
             return f"Failed to capture URL: {exc}"
 
-    # Save to raw/files/
-    safe_name = re.sub(r"[^\w\s-]", "", note_name)
-    safe_name = re.sub(r"[\s]+", "_", safe_name).strip("_")
-    timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
-    filename = f"{timestamp}-{safe_name}.md"
-    filepath = wiki_manager.raw_files_dir / filename
-    filepath.parent.mkdir(parents=True, exist_ok=True)
-    filepath.write_text(content, encoding="utf-8")
-
-    _log_intent("Write", "Success", {"name": note_name, "type": "url", "url": url})
-    return f"Captured '{url}' as '{note_name}'. It will be compiled into the wiki automatically."
-
+    if raw_manager:
+        safe_name = re.sub(r"[^\w\s-]", "", note_name)
+        safe_name = re.sub(r"[\s]+", "_", safe_name).strip("_")
+        timestamp = datetime.now().strftime("%Y-%m-%dT%H-%M-%S")
+        filename = f"{timestamp}-{safe_name}.md"
+        filepath = raw_manager.raw_dir / "files" / filename
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        filepath.write_text(content, encoding="utf-8")
+        
+        _log_intent("Write", "Success", {"name": note_name, "type": "url", "url": url})
+        return f"Captured '{url}' as '{note_name}'. It will be processed by the 3-layer pipeline."
+    return "Error: RawManager not initialized."
 
 @mcp.tool()
 async def Read(name: str) -> str:
-    """Read a compiled wiki page from the knowledge base.
+    """Read a compiled wiki page from the knowledge base."""
+    if not hierarchy_manager:
+        return "Error: HierarchyManager not initialized."
 
-    Special names:
-    - "_list": Returns all page titles in the wiki
-    - "_index": Returns the master knowledge index (start here!)
-
-    Args:
-        name: Page path (e.g., "Project/ClaudeCode/Guidebook") or special command.
-    """
-    from wiki_manager import wiki_manager
-
-    # Special: list all pages
     if name == "_list":
-        pages = wiki_manager.list_pages()
+        pages = hierarchy_manager.list_pages()
         if not pages:
             return "No pages in the wiki yet."
         _log_intent("Read", "Success", {"type": "list", "count": len(pages)})
         return "\n".join(pages)
 
-    # Special: master index
     if name == "_index":
-        page = wiki_manager.read_page("index")
+        page = hierarchy_manager.read_page("index")
         if not page:
-            # Auto-generate index if missing
-            content = wiki_manager.rebuild_index()
+            content = hierarchy_manager.rebuild_index()
             _log_intent("Read", "Success", {"type": "index", "generated": True})
             return content
         _log_intent("Read", "Success", {"type": "index"})
-        return page.content
+        return page["content"]
 
-    # Normal page read
-    page = wiki_manager.read_page(name)
+    page = hierarchy_manager.read_page(name)
     if not page:
         return f"Page '{name}' not found. Use Read('_list') to see available pages."
     _log_intent("Read", "Success", {"name": name})
-    return page.content
-
+    return page["content"]
 
 @mcp.tool()
 async def SystemStatus() -> str:
-    """View system health, processing queue, and knowledge graph visualizer link."""
-    from wiki_manager import wiki_manager
+    """View system health and unified watcher status."""
+    if not hierarchy_manager or not raw_manager:
+        return "Error: Managers not initialized."
 
     cfg = config_manager.get_config()
-    pages = wiki_manager.list_pages()
-    graph = wiki_manager.get_graph_data()
-
-    # Count pending raw files
-    pending = 0
-    for sub in ("files", "memos", "conversations"):
-        sub_dir = wiki_manager.raw_dir / sub
-        if sub_dir.exists():
-            pending += sum(1 for f in sub_dir.rglob("*") if f.is_file())
+    pages = hierarchy_manager.list_pages()
+    graph = hierarchy_manager.get_graph_data()
+    
+    # Count pending raw files via RawManager's knowledge
+    pending = len(raw_manager.list_raw())
 
     status = (
         "## 📊 ConnectWikiMCP Status\n\n"
@@ -193,14 +166,13 @@ async def SystemStatus() -> str:
         f"- **Graph Links**: {len(graph['links'])}\n"
         f"- **Raw Queue**: {pending} file(s) in staging\n"
         f"- **LLM Backend**: {cfg.local_llm_type} ({cfg.local_llm_model})\n"
-        f"- **LLM URL**: {cfg.local_llm_api_url}\n"
+        f"- **Antigravity Watch**: {'Enabled' if cfg.brain_watch_path else 'Disabled'}\n"
         f"\n"
         f"🔗 **Visualizer**: http://localhost:{cfg.mcp_port}/visualizer\n"
     )
 
     _log_intent("SystemStatus", "Success", {"pages": len(pages)})
     return status
-
 
 @mcp.tool()
 async def ConfigureSettings(
@@ -211,16 +183,7 @@ async def ConfigureSettings(
     local_llm_api_key: Optional[str] = None,
     mcp_port: Optional[int] = None,
 ) -> str:
-    """Update runtime configuration parameters for the ConnectWiki system.
-
-    Args:
-        wiki_root_path: The local filesystem path for wiki data.
-        local_llm_type: Backend type (e.g., 'ollama', 'llamacpp').
-        local_llm_api_url: Connection URL for local inference.
-        local_llm_model: Target model identifier.
-        local_llm_api_key: Optional token for inference APIs.
-        mcp_port: Networking port for the MCP interface.
-    """
+    """Update runtime configuration parameters."""
     updates = {
         "wiki_root_path": wiki_root_path,
         "local_llm_type": local_llm_type,
@@ -232,110 +195,53 @@ async def ConfigureSettings(
     config_manager.update_config(updates)
     return "Settings updated."
 
-
-# ── Internal helpers ─────────────────────────────────────────
-
-
 def _log_intent(tool_name: str, outcome: str, metadata: dict[str, Any] | None = None) -> None:
-    """Lightweight intent logging without triggering heavy maintenance."""
+    """Lightweight intent logging."""
     try:
-        from wiki_manager import wiki_manager
-        wiki_manager.log_intent(f"Executed {tool_name}", tool_name, outcome, metadata or {})
+        log_dir = Path(config_manager.get_config().wiki_root_path) / "logs"
+        log_dir.mkdir(parents=True, exist_ok=True)
+        entry = {
+            "timestamp": datetime.now().isoformat(),
+            "tool": tool_name,
+            "outcome": outcome,
+            "metadata": metadata or {},
+        }
+        log_file = log_dir / "intent_history.jsonl"
+        with log_file.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(entry, ensure_ascii=False) + "\n")
     except Exception:
         pass
 
+# ── Managed 3-Layer Pipeline & Orchestration ─────────────────
 
-# ── Scheduler & Server ──────────────────────────────────────
+raw_manager: RawManager = None
+transform_manager: TransformManager = None
+hierarchy_manager: HierarchyManager = None
 
+transform_queue: asyncio.Queue[Path] = asyncio.Queue()
+hierarchy_queue: asyncio.Queue[Path] = asyncio.Queue()
 
-async def _compile_scheduler() -> None:
-    """Background task: watch raw folders for changes and trigger compilation.
-
-    Scans raw/files/, raw/memos/, raw/conversations/ for unprocessed files.
-    Uses a simple tracker file to avoid reprocessing.
-    """
-    from compile_engine import compile_engine
-    from wiki_manager import wiki_manager
-
-    tracker_path = wiki_manager.logs_dir / "compiled_files.json"
-
-    def _load_tracker() -> set[str]:
-        if tracker_path.exists():
-            try:
-                return set(json.loads(tracker_path.read_text(encoding="utf-8")))
-            except Exception:
-                pass
-        return set()
-
-    def _save_tracker(compiled: set[str]) -> None:
-        tracker_path.parent.mkdir(parents=True, exist_ok=True)
-        tracker_path.write_text(
-            json.dumps(sorted(compiled), indent=2), encoding="utf-8"
-        )
-
+async def _orchestrated_maintenance_scheduler() -> None:
+    """Unified background task: Maintenance + Watchers."""
     cfg = config_manager.get_config()
-    interval = max(cfg.conversation_watch_interval_minutes, 5) * 60  # reuse existing config
+    interval = cfg.antigravity_watch_interval_minutes
 
-    logger.info("Compile scheduler started: scanning every %d seconds.", interval)
-    await asyncio.sleep(60)  # initial delay
+    if interval <= 0:
+        # Maintenance still runs but at a fixed interval if watching is disabled
+        interval = 30
+
+    logger.info("Unified Maintenance Scheduler started: cycle every %d min.", interval)
+    # Initial delay to let server settle
+    await asyncio.sleep(10)
 
     while True:
         try:
-            compiled = _load_tracker()
-            new_count = 0
-
-            for sub_dir in (wiki_manager.raw_files_dir, wiki_manager.raw_memos_dir, wiki_manager.raw_conversations_dir):
-                if not sub_dir.exists():
-                    continue
-                for raw_file in sorted(sub_dir.rglob("*")):
-                    if raw_file.is_dir():
-                        continue
-                    file_key = raw_file.relative_to(wiki_manager.raw_dir).as_posix()
-                    if file_key in compiled:
-                        continue
-
-                    try:
-                        pages = await compile_engine.compile(raw_file)
-                        if pages:
-                            compiled.add(file_key)
-                            new_count += 1
-                            logger.info("Compiled '%s' → %s", file_key, pages)
-                    except Exception:
-                        logger.exception("Failed to compile '%s'", file_key)
-
-            if new_count:
-                _save_tracker(compiled)
-                logger.info("Compile cycle: %d new file(s) processed.", new_count)
-
+            if hierarchy_manager:
+                # Execute Maintenance + All Registered Watchers
+                await maintenance_manager.perform_maintenance(hierarchy_manager)
         except Exception:
-            logger.exception("Compile scheduler cycle failed")
-
-        await asyncio.sleep(interval)
-
-
-async def _conversation_watcher_scheduler() -> None:
-    """Background task: scan brain directory for new conversations."""
-    cfg = config_manager.get_config()
-    brain_path = cfg.brain_watch_path.strip()
-    interval = cfg.conversation_watch_interval_minutes
-
-    if interval <= 0 or not brain_path:
-        logger.info("Conversation watcher disabled.")
-        return
-
-    logger.info("Conversation watcher started: scanning '%s' every %d min.", brain_path, interval)
-    await asyncio.sleep(120)
-
-    while True:
-        try:
-            from conversation_watcher import conversation_watcher
-            summary = await conversation_watcher.run_watch_cycle()
-            if "No new" not in summary:
-                logger.info("Conversation watcher: %s", summary)
-        except Exception:
-            logger.exception("Conversation watcher cycle failed")
+            logger.exception("Unified maintenance cycle failed")
         await asyncio.sleep(interval * 60)
-
 
 def main() -> None:
     if hasattr(sys.stdin, "reconfigure"):
@@ -350,7 +256,6 @@ def main() -> None:
 
     def run_http() -> None:
         import uvicorn
-        from contextlib import asynccontextmanager
         from starlette.applications import Starlette
         from starlette.routing import Mount, Route
         from starlette.responses import HTMLResponse
@@ -363,31 +268,48 @@ def main() -> None:
         mcp_app = mcp.streamable_http_app()
 
         async def serve_visualizer(request):
-            from wiki_manager import wiki_manager
-            html = wiki_manager.generate_graph_html()
-            return HTMLResponse(content=html)
+            # Point to the physical file generated by MaintenanceManager
+            viz_file = Path(config_manager.get_config().wiki_root_path) / "visualizer.html"
+            if viz_file.exists():
+                return HTMLResponse(content=viz_file.read_text(encoding="utf-8"))
+            return HTMLResponse(content="<html><body><h1>Visualizer not ready yet.</h1></body></html>")
 
         @asynccontextmanager
         async def lifespan(app):
             async with mcp.session_manager.run():
-                compile_task = asyncio.create_task(_compile_scheduler())
-                watch_task = asyncio.create_task(_conversation_watcher_scheduler())
+                global raw_manager, transform_manager, hierarchy_manager
+                
+                # 1. Initialize Specialized Managers
+                root = Path(config_manager.get_config().wiki_root_path)
+                raw_manager = RawManager(root / "raw")
+                transform_manager = TransformManager(root / "raw", root / "transformed")
+                hierarchy_manager = HierarchyManager(root / "pages", root / "transformed")
+                
+                # 2. Register Watchers (Dynamic Plugin Registry)
+                ag_watcher = AntigravityWatcher()
+                maintenance_manager.register_watcher(ag_watcher)
+                
+                # 3. Start Pipeline internal workers
+                raw_task = asyncio.create_task(raw_manager.run_worker(transform_queue, transform_manager))
+                transform_task = asyncio.create_task(transform_manager.run_worker(transform_queue, hierarchy_queue))
+                hierarchy_task = asyncio.create_task(hierarchy_manager.run_worker(hierarchy_queue))
+                
+                # 4. Start Unified Maintenance Scheduler
+                maint_task = asyncio.create_task(_orchestrated_maintenance_scheduler())
+                
                 try:
                     yield
                 finally:
-                    compile_task.cancel()
-                    watch_task.cancel()
-                    for t in (compile_task, watch_task):
-                        try:
+                    for t in (raw_task, transform_task, hierarchy_task, maint_task):
+                        t.cancel()
+                        with contextlib.suppress(asyncio.CancelledError):
                             await t
-                        except asyncio.CancelledError:
-                            pass
 
         app = Starlette(
             lifespan=lifespan,
             routes=[
                 Route("/visualizer", endpoint=serve_visualizer),
-                Mount("/static", app=StaticFiles(directory="/app/static")),
+                Mount("/static", app=StaticFiles(directory=str(Path(__file__).parent / "templates"))),
                 Mount("/", app=mcp_app),
             ],
         )
@@ -395,10 +317,10 @@ def main() -> None:
 
     try:
         if transport in ["http", "sse"]:
-            logger.info("Starting ConnectWikiMCP v2.0 in HTTP mode (Port: %d)", port)
+            logger.info("Starting ConnectWikiMCP v2.1 in HTTP mode (Port: %d)", port)
             run_http()
         else:
-            logger.info("Starting ConnectWikiMCP v2.0 in STDIO mode")
+            logger.info("Starting ConnectWikiMCP v2.1 in STDIO mode")
             mcp.run(transport="stdio")
     except KeyboardInterrupt:
         logger.info("Server shutting down...")
@@ -406,7 +328,6 @@ def main() -> None:
         for handler in logging.root.handlers[:]:
             handler.close()
             logging.root.removeHandler(handler)
-
 
 if __name__ == "__main__":
     main()

@@ -5,7 +5,7 @@ from typing import Any
 
 import httpx
 
-from config import config_manager
+from config.config import config_manager
 
 
 class LocalLlmClient:
@@ -43,28 +43,6 @@ class LocalLlmClient:
         """Request a JSON response from the LLM and parse it into a Python dictionary."""
         response = await self.complete_text(prompt, system_prompt=system_prompt)
         return self._extract_json(response)
-
-    async def get_embedding(self, text: str) -> list[float]:
-        """Generate a vector embedding for the given text using Ollama's embedding API.
-        Returns an empty list if the embedding model is unavailable."""
-        cfg = config_manager.get_config()
-        if cfg.local_llm_type != "ollama":
-            return []
-        url = f"{cfg.local_llm_api_url.rstrip('/')}/api/embed"
-        payload = {"model": cfg.embedding_model, "input": text[:4096]}
-        try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(url, json=payload)
-                response.raise_for_status()
-                data = response.json()
-                # Ollama returns {"embeddings": [[...]], "model": ...}
-                embeddings = data.get("embeddings") or data.get("embedding")
-                if isinstance(embeddings, list) and embeddings:
-                    vec = embeddings[0] if isinstance(embeddings[0], list) else embeddings
-                    return [float(v) for v in vec]
-        except Exception:
-            pass
-        return []
 
     def _extract_json(self, response: str) -> dict[str, Any]:
         """Sanitize and parse a JSON string from the model's raw text output."""

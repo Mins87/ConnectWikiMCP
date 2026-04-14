@@ -30,11 +30,10 @@ class Config(BaseModel):
     local_llm_api_url: str = "http://localhost:11434"
     local_llm_model: str = "gemma4-E4B-it"
     local_llm_api_key: Optional[str] = None
-    embedding_model: str = "nomic-embed-text"          # Ollama embedding model
     mcp_port: int = 8000
     python_command: str = "python"
     brain_watch_path: str = ""                          # Antigravity brain dir; empty = disabled
-    conversation_watch_interval_minutes: int = 30      # 0 = disabled
+    antigravity_watch_interval_minutes: int = 30       # 0 = disabled
 
 
 class ConfigManager:
@@ -53,11 +52,10 @@ class ConfigManager:
             local_llm_api_url=os.getenv("LOCAL_LLM_API_URL", "http://localhost:11434"),
             local_llm_model=os.getenv("LOCAL_LLM_MODEL", "gemma4-E4B-it"),
             local_llm_api_key=os.getenv("LOCAL_LLM_API_KEY"),
-            embedding_model=os.getenv("EMBEDDING_MODEL", "nomic-embed-text"),
             mcp_port=int(os.getenv("MCP_PORT", "8000")),
             python_command=os.getenv("PYTHON_COMMAND", "python"),
             brain_watch_path=os.getenv("BRAIN_WATCH_PATH", ""),
-            conversation_watch_interval_minutes=int(os.getenv("CONVERSATION_WATCH_INTERVAL", "30")),
+            antigravity_watch_interval_minutes=int(os.getenv("ANTIGRAVITY_WATCH_INTERVAL", "30")),
         )
 
     def initialize(self) -> None:

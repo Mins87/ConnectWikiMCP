@@ -1,14 +1,3 @@
-"""Conversation auto-capture pipeline for Antigravity brain logs.
-
-Watches the Antigravity brain directory for completed conversation logs
-and automatically ingests them into the wiki knowledge base. Each
-conversation is distilled by the local LLM into a structured wiki page
-under ``Conversations/YYYY-MM-DD/TopicSlug``.
-
-The watcher is designed to run as a background coroutine alongside the
-MCP server's main event loop, triggered periodically by the evolution
-scheduler or on-demand via MCP tools.
-"""
 from __future__ import annotations
 
 import json
@@ -16,28 +5,43 @@ import logging
 import re
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
-from config import config_manager
+from config.config import config_manager
+from watchers.base import BaseWatcher
 
-logger = logging.getLogger("connect-wiki.watcher")
+if TYPE_CHECKING:
+    from managers.hierarchy_manager import HierarchyManager
 
+logger = logging.getLogger("connect-wiki.watchers.antigravity")
 
-class ConversationWatcher:
-    """Monitors the Antigravity brain directory and auto-ingests conversations.
-
-    Workflow per conversation:
-        1. Detect unprocessed conversation directories.
-        2. Read ``overview.txt`` (full transcript) and any artifacts.
-        3. Distill via local LLM into a compact wiki page.
-        4. Save under ``Conversations/YYYY-MM-DD/TopicSlug``.
-        5. Mark conversation ID as processed to avoid re-ingestion.
+class AntigravityWatcher(BaseWatcher):
+    """Monitors the Antigravity brain directory and auto-ingests conversations logic.
+    Refactored to follow the BaseWatcher interface for managed orchestration.
     """
 
     def __init__(self) -> None:
         """Initialize with empty state; paths are resolved lazily from config."""
         self._processed_ids: set[str] = set()
         self._loaded = False
+
+    # ── BaseWatcher Implementation ────────────────────────
+
+    async def watch(self, hierarchy: HierarchyManager) -> None:
+        """Performed a single ingestion cycle, managed by MaintenanceManager."""
+        logger.debug("Antigravity Watcher: Checking for new brain logs...")
+        conversations = self.discover_conversations()
+        if not conversations:
+            return
+
+        ingested_count = 0
+        for conv in conversations:
+            page_name = await self.ingest_conversation(conv, hierarchy)
+            if page_name:
+                ingested_count += 1
+        
+        if ingested_count > 0:
+            logger.info("Antigravity Watcher: Ingested %d new conversation(s).", ingested_count)
 
     # ── Path helpers ─────────────────────────────────────
 
@@ -81,12 +85,7 @@ class ConversationWatcher:
     # ── Discovery ────────────────────────────────────────
 
     def discover_conversations(self) -> list[dict[str, Any]]:
-        """Scan the brain directory for unprocessed conversations.
-
-        Returns:
-            A list of dicts with keys: conversation_id, overview_path,
-            artifacts (list of artifact file paths), and mtime.
-        """
+        """Scan the brain directory for unprocessed conversations."""
         brain = self.brain_dir
         if not brain:
             return []
@@ -122,33 +121,22 @@ class ConversationWatcher:
                 "mtime": overview.stat().st_mtime,
             })
 
-        # Sort by modification time (oldest first)
         results.sort(key=lambda x: x["mtime"])
         return results
 
     # ── Ingestion ────────────────────────────────────────
 
-    async def ingest_conversation(self, conv_info: dict[str, Any]) -> str | None:
-        """Process a single conversation into a wiki page.
-
-        Args:
-            conv_info: Discovery result dict from ``discover_conversations``.
-
-        Returns:
-            The wiki page name if successful, None on failure.
-        """
-        from llm_client import llm_client
-        from wiki_manager import wiki_manager
+    async def ingest_conversation(self, conv_info: dict[str, Any], hierarchy: HierarchyManager) -> str | None:
+        """Process a single conversation into a wiki page."""
+        from config.llm_client import llm_client
 
         conv_id = conv_info["conversation_id"]
         overview_path: Path = conv_info["overview_path"]
 
         try:
-            # Read the transcript (cap at 8000 chars for LLM context)
             transcript = overview_path.read_text(encoding="utf-8", errors="replace")
             transcript_preview = transcript[:8000]
 
-            # Read artifact summaries
             artifact_texts = []
             for art_path in conv_info["artifacts"]:
                 art_content = art_path.read_text(encoding="utf-8", errors="replace")
@@ -176,7 +164,7 @@ class ConversationWatcher:
                 f"CONVERSATION ID: {conv_id}\n\n"
                 f"TRANSCRIPT (first 8000 chars):\n{transcript_preview}\n\n"
                 f"ARTIFACTS:\n{artifacts_section}"
-            )
+            ).replace("{conv_id}", conv_id).replace("{date}", datetime.fromtimestamp(conv_info["mtime"]).strftime("%Y-%m-%d"))
 
             wiki_content = await llm_client.complete_text(
                 prompt,
@@ -187,96 +175,30 @@ class ConversationWatcher:
             )
 
             if not wiki_content or len(wiki_content.strip()) < 50:
-                logger.warning("LLM returned insufficient content for conversation %s", conv_id)
                 return None
 
-            # Extract title from the generated content for the page name
             title_slug = self._extract_title_slug(wiki_content, conv_id)
             date_str = datetime.fromtimestamp(conv_info["mtime"]).strftime("%Y-%m-%d")
             page_name = f"Conversations/{date_str}/{title_slug}"
 
-            # Save to wiki
-            wiki_manager.write_page(page_name, wiki_content)
-
-            # Mark as processed
+            hierarchy.write_page(page_name, wiki_content)
             self._processed_ids.add(conv_id)
             self._save_tracker()
 
-            logger.info(
-                "Conversation '%s' ingested as wiki page '%s' (%d chars)",
-                conv_id[:12], page_name, len(wiki_content),
-            )
             return page_name
 
         except Exception as exc:
             logger.error("Failed to ingest conversation '%s': %s", conv_id[:12], exc)
             return None
 
-    # ── Batch processing ─────────────────────────────────
-
-    async def run_watch_cycle(self) -> str:
-        """Discover and ingest all new conversations.
-
-        Returns:
-            A human-readable summary of what was processed.
-        """
-        conversations = self.discover_conversations()
-        if not conversations:
-            return "No new conversations to process."
-
-        ingested = []
-        failed = 0
-        for conv in conversations:
-            page_name = await self.ingest_conversation(conv)
-            if page_name:
-                ingested.append(page_name)
-            else:
-                failed += 1
-
-        summary = f"Processed {len(ingested)} conversations"
-        if failed:
-            summary += f" ({failed} failed)"
-        if ingested:
-            summary += f": {', '.join(ingested)}"
-
-        logger.info("Watch cycle complete: %s", summary)
-        return summary
-
-    # ── Utilities ────────────────────────────────────────
-
     @staticmethod
     def _extract_title_slug(content: str, fallback_id: str) -> str:
-        """Extract a URL-safe title slug from the generated wiki content.
-
-        Looks for the first markdown H1 heading. Falls back to truncated
-        conversation ID if no heading is found.
-        """
+        """Extract a URL-safe title slug from the generated wiki content."""
         for line in content.split("\n"):
             line = line.strip()
             if line.startswith("# ") and len(line) > 3:
                 title = line[2:].strip()
-                # Sanitize for filesystem
                 slug = re.sub(r"[^\w\s-]", "", title)
                 slug = re.sub(r"[\s]+", "_", slug).strip("_")
                 return slug[:80] if slug else fallback_id[:12]
         return fallback_id[:12]
-
-    def get_status(self) -> dict[str, Any]:
-        """Return a status summary for diagnostics.
-
-        Returns:
-            Dict with brain path, enabled status, processed count,
-            and pending count.
-        """
-        self._load_tracker()
-        brain = self.brain_dir
-        pending = len(self.discover_conversations()) if brain else 0
-        return {
-            "enabled": brain is not None,
-            "brain_path": str(brain) if brain else "(not configured)",
-            "processed_count": len(self._processed_ids),
-            "pending_count": pending,
-        }
-
-
-conversation_watcher = ConversationWatcher()
